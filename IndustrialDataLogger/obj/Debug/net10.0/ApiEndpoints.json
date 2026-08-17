@@ -1,0 +1,100 @@
+[
+  {
+    "ContainingType": "IndustrialDataLogger.Controllers.SensorController",
+    "Method": "ConnectPlc",
+    "RelativePath": "api/Sensor/connect",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "IndustrialDataLogger.Controllers.SensorController",
+    "Method": "GetConnectionStatus",
+    "RelativePath": "api/Sensor/connection-status",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "IndustrialDataLogger.Controllers.SensorController",
+    "Method": "DisconnectPlc",
+    "RelativePath": "api/Sensor/disconnect",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "IndustrialDataLogger.Controllers.SensorController",
+    "Method": "GetHistory",
+    "RelativePath": "api/Sensor/history",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "limit",
+        "Type": "System.Int32",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "IndustrialDataLogger.Controllers.SensorController",
+    "Method": "GetLatestData",
+    "RelativePath": "api/Sensor/latest",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "IndustrialDataLogger.Controllers.SensorController",
+    "Method": "GetMode",
+    "RelativePath": "api/Sensor/mode",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "IndustrialDataLogger.Controllers.SensorController",
+    "Method": "SetMode",
+    "RelativePath": "api/Sensor/mode",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "model",
+        "Type": "IndustrialDataLogger.Controllers.SensorController\u002BModeModel",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "IndustrialDataLogger.Controllers.SensorController",
+    "Method": "WritePlcData",
+    "RelativePath": "api/Sensor/write",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "request",
+        "Type": "IndustrialDataLogger.Models.PlcWriteRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  }
+]
