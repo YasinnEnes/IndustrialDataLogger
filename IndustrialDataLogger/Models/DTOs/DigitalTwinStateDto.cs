@@ -17,11 +17,14 @@ namespace IndustrialDataLogger.Models.DTOs
         public DateTime LastUpdate { get; set; } = DateTime.UtcNow;
         public short ErrorCode { get; set; }
 
-        // GÜN 2 (Sprint 2.1 & 2.2): Makine Operasyonel Durumu & Sağlık Skoru
+        // GÜN 2: Makine Operasyonel Durumu & Sağlık Skoru
         public MachineOperationalStatus OperationalStatus { get; set; } = MachineOperationalStatus.Offline;
         public double HealthScore { get; set; } = 100.0;
         public HealthGrade HealthGrade { get; set; } = HealthGrade.Healthy;
         public HealthScoreBreakdownDto HealthBreakdown { get; set; } = new HealthScoreBreakdownDto();
+
+        // GÜN 5: OEE & Üretim Verimliliği Metrikleri
+        public OeeMetricsDto Oee { get; set; } = new OeeMetricsDto();
 
         public int ActiveAlarmCount { get; set; }
         public IReadOnlyList<AlarmLog> ActiveAlarms { get; set; } = new List<AlarmLog>();

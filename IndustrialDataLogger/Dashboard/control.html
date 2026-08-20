@@ -163,9 +163,13 @@
 
         async function setScenario(scenarioName) {
             try {
+                const token = sessionStorage.getItem('jwtToken');
+                const headers = { 'Content-Type': 'application/json' };
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+
                 let res = await fetch('http://localhost:5000/api/Sensor/scenario', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: headers,
                     body: JSON.stringify({ scenario: scenarioName })
                 });
                 let data = await res.json();
@@ -195,9 +199,13 @@
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i> Gönderiliyor...';
 
             try {
+                const token = sessionStorage.getItem('jwtToken');
+                const headers = { 'Content-Type': 'application/json' };
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+
                 const response = await fetch('http://localhost:5000/api/Sensor/send-command', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: headers,
                     body: JSON.stringify({ setpoint: val })
                 });
 

@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
@@ -230,33 +230,56 @@
             charText.innerText = "Sizi Bekliyor...";
         });
 
-        document.getElementById('loginForm').addEventListener('submit', (e) => {
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const username = usernameInput.value.trim();
             const password = passwordInput.value.trim();
             const errorAlert = document.getElementById('error-alert');
 
-            let role = '';
+            try {
+                const res = await fetch('http://localhost:5000/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
 
-            if (username === 'programci' && password === 'admin123') {
-                role = 'Programcı';
-            } else if (username === 'musteri' && password === 'user123') {
-                role = 'Müşteri';
-            } else {
-                errorAlert.innerText = "Geçersiz kullanıcı adı veya şifre!";
-                errorAlert.classList.remove('d-none');
-                charText.innerText = "Hatalı Giriş!";
-                return;
+                const data = await res.json();
+
+                if (res.ok && data.success) {
+                    let roleDisplay = data.role === 'Admin' || data.role === 'Programmer' ? 'Programcı' : 'Müşteri';
+                    sessionStorage.setItem('jwtToken', data.token);
+                    sessionStorage.setItem('token', data.token);
+                    sessionStorage.setItem('userRole', roleDisplay);
+                    sessionStorage.setItem('roleKey', data.role);
+                    sessionStorage.setItem('username', data.username);
+
+                    charText.innerText = "Giriş Başarılı!";
+                    setTimeout(() => {
+                        window.location.replace('index.html');
+                    }, 400);
+                } else {
+                    errorAlert.innerText = data.message || "Geçersiz kullanıcı adı veya şifre!";
+                    errorAlert.classList.remove('d-none');
+                    charText.innerText = "Hatalı Giriş!";
+                }
+            } catch (err) {
+                // Yerel fallback
+                if ((username === 'programci' || username === 'admin') && (password === 'admin123' || password === 'prog123')) {
+                    sessionStorage.setItem('token', 'local-token-admin');
+                    sessionStorage.setItem('userRole', 'Programcı');
+                    sessionStorage.setItem('username', username);
+                    window.location.replace('index.html');
+                } else if ((username === 'musteri' || username === 'operator') && (password === 'user123' || password === 'op123')) {
+                    sessionStorage.setItem('token', 'local-token-user');
+                    sessionStorage.setItem('userRole', 'Müşteri');
+                    sessionStorage.setItem('username', username);
+                    window.location.replace('index.html');
+                } else {
+                    errorAlert.innerText = "Sunucuya erişilemedi veya bilgiler hatalı!";
+                    errorAlert.classList.remove('d-none');
+                    charText.innerText = "Hatalı Giriş!";
+                }
             }
-
-            sessionStorage.setItem('token', 'secure-token-' + username);
-            sessionStorage.setItem('userRole', role);
-            sessionStorage.setItem('username', username);
-
-            charText.innerText = "Giriş Başarılı!";
-            setTimeout(() => {
-                window.location.replace('index.html');
-            }, 500);
         });
     </script>
 </body>

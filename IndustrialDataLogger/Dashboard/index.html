@@ -331,6 +331,39 @@
                 </div>
             </div>
 
+            <!-- GÜN 5 (Sprint 5.1 - 5.8): OEE & Üretim Verimliliği Paneli -->
+            <div class="card card-custom p-3 mb-3" id="oee-panel-card">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="fw-bold mb-0 text-dark">
+                        <i class="fa-solid fa-chart-pie text-success me-2"></i>OEE & Üretim Verimliliği (Overall Equipment Effectiveness)
+                    </h6>
+                    <span class="badge bg-success" id="oee-worldclass-badge" style="font-size: 0.75rem;">World-Class OEE</span>
+                </div>
+
+                <div class="row g-2 align-items-center">
+                    <div class="col-md-3 col-6 text-center border-end">
+                        <span class="text-muted small fw-semibold">GENEL OEE SKORU</span>
+                        <div class="h3 fw-bold text-success mb-0 mt-1" id="oee-overall-val">87.1%</div>
+                        <small class="text-muted" style="font-size: 0.70rem;">Hedef: >85.0%</small>
+                    </div>
+                    <div class="col-md-3 col-6 text-center border-end">
+                        <span class="text-muted small fw-semibold">KULLANILABİLİRLİK</span>
+                        <div class="h4 fw-bold text-primary mb-0 mt-1" id="oee-avail-val">95.0%</div>
+                        <small class="text-muted" style="font-size: 0.70rem;">Çalışma / Planlanan</small>
+                    </div>
+                    <div class="col-md-3 col-6 text-center border-end">
+                        <span class="text-muted small fw-semibold">PERFORMANS</span>
+                        <div class="h4 fw-bold text-warning mb-0 mt-1" id="oee-perf-val">92.5%</div>
+                        <small class="text-muted" style="font-size: 0.70rem;">Hız / Çevrim Oranı</small>
+                    </div>
+                    <div class="col-md-3 col-6 text-center">
+                        <span class="text-muted small fw-semibold">KALİTE ORANI</span>
+                        <div class="h4 fw-bold text-info mb-0 mt-1" id="oee-qual-val">99.1%</div>
+                        <small class="text-muted" style="font-size: 0.70rem;">Sağlam: <b id="oee-good-count">1,437</b> | Fire: <b id="oee-defect-count">13</b></small>
+                    </div>
+                </div>
+            </div>
+
             <!-- Alarms & Event Timeline Row (GÜN 3: Karar Destek & Olay Günlüğü) -->
             <div class="row g-3 mb-3">
                 <div class="col-lg-6">
@@ -412,13 +445,18 @@
             const roleBadge = document.getElementById('logged-user-role');
             if (roleBadge) roleBadge.innerText = userRole || 'Misafir';
 
+            let isAuthorized = userRole === 'Programcı' || sessionStorage.getItem('roleKey') === 'Admin' || sessionStorage.getItem('roleKey') === 'Programmer';
+
             let menuHTML = `<a href="index.html" class="active"><i class="fa-solid fa-chart-line me-2"></i> Grafikler & Dijital İkiz</a>`;
 
-            if (userRole === 'Programcı') {
+            if (isAuthorized) {
                 menuHTML += `<a href="control.html"><i class="fa-solid fa-sliders me-2"></i> PLC Komut</a>`;
             } else {
                 const plcMgmt = document.getElementById('plc-management-section');
                 if (plcMgmt) plcMgmt.style.display = 'none';
+
+                const scenarioTag = document.getElementById('active-scenario-tag');
+                if (scenarioTag) scenarioTag.innerText += " (İzleme Modu)";
             }
             if (nav) nav.innerHTML = menuHTML;
         }
@@ -834,6 +872,33 @@
 
             if (state.machineRunningRatio !== undefined && document.getElementById('kpi-running-ratio')) document.getElementById('kpi-running-ratio').innerText = state.machineRunningRatio + "%";
             if (state.totalLogCount !== undefined && document.getElementById('kpi-total-logs')) document.getElementById('kpi-total-logs').innerText = state.totalLogCount.toLocaleString();
+
+            // GÜN 5: OEE & Üretim Verimlilik Güncellemesi
+            if (state.oee) {
+                let o = state.oee;
+                let oeeVal = document.getElementById('oee-overall-val');
+                let oeeBadge = document.getElementById('oee-worldclass-badge');
+                if (oeeVal) oeeVal.innerText = (o.overallOee || 0) + "%";
+                if (document.getElementById('oee-avail-val')) document.getElementById('oee-avail-val').innerText = (o.availability || 0) + "%";
+                if (document.getElementById('oee-perf-val')) document.getElementById('oee-perf-val').innerText = (o.performance || 0) + "%";
+                if (document.getElementById('oee-qual-val')) document.getElementById('oee-qual-val').innerText = (o.quality || 0) + "%";
+
+                if (document.getElementById('oee-good-count')) document.getElementById('oee-good-count').innerText = (o.goodPartCount || 0).toLocaleString();
+                if (document.getElementById('oee-defect-count')) document.getElementById('oee-defect-count').innerText = (o.defectCount || 0).toLocaleString();
+
+                if (oeeBadge && o.overallOee) {
+                    if (o.overallOee >= 85) {
+                        oeeBadge.className = "badge bg-success";
+                        oeeBadge.innerText = "World-Class OEE (>=85%)";
+                    } else if (o.overallOee >= 70) {
+                        oeeBadge.className = "badge bg-warning text-dark";
+                        oeeBadge.innerText = "Kabul Edilebilir OEE";
+                    } else {
+                        oeeBadge.className = "badge bg-danger";
+                        oeeBadge.innerText = "Düşük Verimlilik (<70%)";
+                    }
+                }
+            }
 
             if (state.activeAlarms) renderActiveAlarms(state.activeAlarms);
         }
