@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -5,20 +6,51 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using IndustrialDataLogger;
 using IndustrialDataLogger.Data;
+using IndustrialDataLogger.HealthChecks;
 using IndustrialDataLogger.Hubs;
 using IndustrialDataLogger.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Temel Servisler
+// 1. Temel Servisler & API
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+
+// GÜN 4 (Sprint 4.1): Swagger JWT Bearer Desteği
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "Industrial IoT & Digital Twin API", Version = "v1" });
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey,
+        Scheme = "Bearer"
+    });
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
 
 // GÜN 3 - SignalR Servis Kaydı
 builder.Services.AddSignalR();
@@ -35,28 +67,53 @@ builder.Services.AddCors(options =>
     });
 });
 
-// 2. PostgreSQL EF Core DbContext Yapılandırması (GÜN 2)
-var connectionString = builder.Configuration.GetConnectionString("PostgreSql")
+// GÜN 4 (Sprint 4.1): Security Hardening - Environment Variable & JWT Konfigürasyonu
+var connectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING")
+    ?? builder.Configuration.GetConnectionString("PostgreSql")
     ?? "Host=localhost;Port=5432;Database=IndustrialDataDB;Username=postgres;Password=1234";
 
 builder.Services.AddDbContext<IndustrialDbContext>(options =>
     options.UseNpgsql(connectionString));
 
+var jwtSecret = Environment.GetEnvironmentVariable("JWT_SECRET")
+    ?? builder.Configuration["JwtSettings:Secret"]
+    ?? "IndustrialDataLogger_SuperSecret_Jwt_Key_2026_Production_Secure_Key_998877665544";
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.RequireHttpsMetadata = false;
+    options.SaveToken = true;
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+        ValidateIssuer = true,
+        ValidIssuer = builder.Configuration["JwtSettings:Issuer"] ?? "IndustrialDataLoggerAPI",
+        ValidateAudience = true,
+        ValidAudience = builder.Configuration["JwtSettings:Audience"] ?? "IndustrialDataLoggerDashboard",
+        ClockSkew = TimeSpan.Zero
+    };
+});
+
+builder.Services.AddAuthorization();
+
+// GÜN 4 (Sprint 4.2): Observability & Health Checks
+builder.Services.AddHealthChecks()
+    .AddCheck<PlcHealthCheck>("plc_health_check");
+
 // 3. Servis Kayıtları
 builder.Services.AddSingleton<MockPlcService>();
 builder.Services.AddSingleton<PlcService>();
 builder.Services.AddSingleton<IPlcConnectionManager, PlcConnectionManager>();
-
-// IPlcService sözleşmesi için HybridPlcService eşlemesi (simülasyon ve gerçek PLC yönetimi)
 builder.Services.AddSingleton<IPlcService, HybridPlcService>();
-
-// GÜN 3 - Sistem Olay Günlüğü Servis Kaydı
+builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
 builder.Services.AddSingleton<IEventLogService, EventLogService>();
-
-// GÜN 4 - Alarm Motoru Servis Kaydı
 builder.Services.AddSingleton<IAlarmService, AlarmService>();
-
-// GÜN 2 & GÜN 5 - Digital Twin & Health Scoring Servis Kaydı
 builder.Services.AddSingleton<IDigitalTwinService, DigitalTwinService>();
 
 // 4. Arka Plan İşçisi (Worker Persistence & SignalR Push & Alarms - GÜN 2, 3, 4, 5)
@@ -147,10 +204,14 @@ if (Directory.Exists(dashboardPath))
 
 app.UseStaticFiles();
 
+// GÜN 4 (Sprint 4.1): Authentication & Authorization Middleware
+app.UseAuthentication();
 app.UseAuthorization();
+
 app.MapControllers();
 
 // GÜN 3 - SignalR Hub Endpoint Eşlemesi
 app.MapHub<MonitoringHub>("/sensorHub");
 
-app.Run("http://localhost:5000");
+var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
+app.Run($"http://0.0.0.0:{port}");

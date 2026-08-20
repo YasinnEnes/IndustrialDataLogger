@@ -1,0 +1,13 @@
+**/.git
+**/.vs
+**/.vscode
+**/bin
+**/obj
+**/*.user
+**/*.suo
+**/logs
+**/.system_generated
+Dockerfile
+docker-compose.yml
+.gitignore
+.dockerignore
