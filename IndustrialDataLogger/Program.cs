@@ -53,7 +53,10 @@ builder.Services.AddSingleton<IPlcService, HybridPlcService>();
 // GÜN 4 - Alarm Motoru Servis Kaydı
 builder.Services.AddSingleton<IAlarmService, AlarmService>();
 
-// 4. Arka Plan İşçisi (Worker Persistence & SignalR Push & Alarms - GÜN 2, 3, 4)
+// GÜN 2 & GÜN 5 - Digital Twin & Health Scoring Servis Kaydı
+builder.Services.AddSingleton<IDigitalTwinService, DigitalTwinService>();
+
+// 4. Arka Plan İşçisi (Worker Persistence & SignalR Push & Alarms - GÜN 2, 3, 4, 5)
 builder.Services.AddHostedService<Worker>();
 
 var app = builder.Build();

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using IndustrialDataLogger.Data;
 using IndustrialDataLogger.Hubs;
+using IndustrialDataLogger.Models;
 using IndustrialDataLogger.Models.Entities;
 using IndustrialDataLogger.Services;
 using System;
@@ -30,17 +31,17 @@ namespace IndustrialDataLogger
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("Industrial Data Logger arka plan servisi başlatıldı (EF Core Logging & SignalR Real-Time Push).");
+            _logger.LogInformation("Industrial Data Logger arka plan servisi başlatıldı (EF Core Logging & SignalR Real-Time Push & Digital Twin State).");
 
             while (!stoppingToken.IsCancellationRequested)
             {
                 try
                 {
-                    // Servisler ihtiyaç duyulduğu an (anlık olarak) container'dan çekilir. Bu sayede DI asla döngüye girmez!
                     using var scope = _serviceProvider.CreateScope();
                     var plcService = scope.ServiceProvider.GetRequiredService<IPlcService>();
                     var connectionManager = scope.ServiceProvider.GetRequiredService<IPlcConnectionManager>();
                     var alarmService = scope.ServiceProvider.GetRequiredService<IAlarmService>();
+                    var digitalTwinService = scope.ServiceProvider.GetRequiredService<IDigitalTwinService>();
 
                     // GÜN 4: PLC bağlantı durumunu alarm motoruna bildir
                     await alarmService.ProcessPlcStatusAsync(connectionManager.CurrentState, stoppingToken);
@@ -52,18 +53,20 @@ namespace IndustrialDataLogger
                         state = connectionManager.CurrentState.ToString()
                     }, stoppingToken);
 
+                    SensorData? data = null;
+
                     if (connectionManager.IsConnected)
                     {
-                        var data = await plcService.ReadSensorDataAsync(stoppingToken);
+                        data = await plcService.ReadSensorDataAsync(stoppingToken);
 
                         if (data != null)
                         {
                             _logger.LogInformation($"Okunan Değerler -> Sıcaklık: {data.Temperature}°C | Basınç: {data.Pressure} bar | Durum: {(data.MachineStatus ? "Çalışıyor" : "Durdu")}");
 
-                            // GÜN 4 (Sprint 4.2): Sensör verilerini kural motorundan (Alarm Engine) geçir
+                            // GÜN 4: Sensör verilerini kural motorundan (Alarm Engine) geçir
                             await alarmService.ProcessSensorReadingAsync(data, stoppingToken);
 
-                            // GÜN 3 (Sprint 3.3): SignalR üzerinden tüm bağlı istemcilere anlık PUSH
+                            // GÜN 3: SignalR üzerinden sensör telemetrisini yayınla
                             await _hubContext.Clients.All.SendAsync("ReceiveSensorData", new
                             {
                                 timestamp = data.Timestamp,
@@ -98,6 +101,10 @@ namespace IndustrialDataLogger
                             }
                         }
                     }
+
+                    // GÜN 2 & GÜN 5 (Sprint 2.4): Digital Twin Durumunu ve Sağlık Skorunu Güncelle & SignalR ile Yayınla
+                    var twinState = await digitalTwinService.UpdateStateAsync(data, connectionManager.CurrentState, stoppingToken);
+                    await _hubContext.Clients.All.SendAsync("ReceiveDigitalTwinState", twinState, stoppingToken);
                 }
                 catch (Exception ex)
                 {

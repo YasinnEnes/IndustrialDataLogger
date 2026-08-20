@@ -226,10 +226,10 @@
                 </div>
             </div>
 
-            <!-- Metric Cards Row -->
+            <!-- Metric & Health Cards Row (GÜN 2: 4 Kartlı Bütünleşik Görünüm) -->
             <div class="row g-3 mb-4">
-                <div class="col-md-4">
-                    <div class="card card-custom p-3">
+                <div class="col-xl-3 col-md-6">
+                    <div class="card card-custom p-3 h-100">
                         <div class="d-flex justify-content-between align-items-center">
                             <span class="text-muted small fw-bold">ANLIK SICAKLIK</span>
                             <i class="fa-solid fa-temperature-three-quarters text-danger"></i>
@@ -243,8 +243,8 @@
                     </div>
                 </div>
 
-                <div class="col-md-4">
-                    <div class="card card-custom p-3">
+                <div class="col-xl-3 col-md-6">
+                    <div class="card card-custom p-3 h-100">
                         <div class="d-flex justify-content-between align-items-center">
                             <span class="text-muted small fw-bold">ANLIK BASINÇ</span>
                             <i class="fa-solid fa-gauge-high text-primary"></i>
@@ -258,16 +258,32 @@
                     </div>
                 </div>
 
-                <div class="col-md-4">
-                    <div class="card card-custom p-3">
+                <div class="col-xl-3 col-md-6">
+                    <div class="card card-custom p-3 h-100">
                         <div class="d-flex justify-content-between align-items-center">
                             <span class="text-muted small fw-bold">MAKİNE DURUMU</span>
-                            <span id="twin-status-tag" class="badge bg-secondary">DURDU</span>
+                            <span id="op-status-badge" class="badge bg-secondary">OFFLINE</span>
                         </div>
-                        <div class="metric-value mt-1" id="status-val">DURDU</div>
+                        <div class="metric-value mt-1 text-dark" id="status-val">DURDU</div>
                         <div class="d-flex justify-content-between text-muted small mt-2" style="font-size: 0.75rem;">
-                            <span>Çalışma Oranı: <b class="text-success" id="kpi-running-ratio">--%</b></span>
+                            <span>Çalışma: <b class="text-success" id="kpi-running-ratio">--%</b></span>
                             <span>Kayıt: <b class="text-dark" id="kpi-total-logs">--</b></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-xl-3 col-md-6">
+                    <div class="card card-custom p-3 h-100">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="text-muted small fw-bold">SAĞLIK SKORU</span>
+                            <span id="health-grade-badge" class="badge bg-success">HEALTHY</span>
+                        </div>
+                        <div class="metric-value text-success mt-1" id="health-score-val">100%</div>
+                        <div class="d-flex justify-content-between text-muted small mt-2" style="font-size: 0.70rem;">
+                            <span>Sıcaklık: <b class="text-dark" id="score-temp">25p</b></span>
+                            <span>Basınç: <b class="text-dark" id="score-press">20p</b></span>
+                            <span>Bağlantı: <b class="text-dark" id="score-conn">20p</b></span>
+                            <span>Alarm: <b class="text-dark" id="score-alarm">35p</b></span>
                         </div>
                     </div>
                 </div>
@@ -732,26 +748,80 @@
             }
         }
 
+        function updateDigitalTwinFullState(state) {
+            if (!state) return;
+
+            updateDigitalTwinVisuals(state);
+            updatePlcStatusUI({ state: state.plcConnectionState, isConnected: state.isPlcConnected });
+
+            // Operasyonel Durum (RUNNING, STOPPED, FAULT, OFFLINE)
+            let opBadge = document.getElementById('op-status-badge');
+            if (opBadge) {
+                let op = state.operationalStatus;
+                let opStr = typeof op === 'number' ? (['OFFLINE', 'STOPPED', 'RUNNING', 'FAULT'][op] || 'OFFLINE') : op.toString().toUpperCase();
+                opBadge.innerText = opStr;
+                if (opStr === 'RUNNING') opBadge.className = 'badge bg-success';
+                else if (opStr === 'FAULT') opBadge.className = 'badge bg-danger';
+                else if (opStr === 'STOPPED') opBadge.className = 'badge bg-warning text-dark';
+                else opBadge.className = 'badge bg-secondary';
+            }
+
+            // Sağlık Skoru & Derecesi
+            let scoreVal = document.getElementById('health-score-val');
+            let gradeBadge = document.getElementById('health-grade-badge');
+            if (scoreVal && state.healthScore !== undefined) {
+                scoreVal.innerText = state.healthScore + "%";
+                let gr = state.healthGrade;
+                let grStr = typeof gr === 'number' ? (['CRITICAL', 'DEGRADED', 'WARNING', 'HEALTHY'][gr] || 'HEALTHY') : gr.toString().toUpperCase();
+
+                if (gradeBadge) {
+                    gradeBadge.innerText = grStr;
+                    if (grStr === 'HEALTHY') {
+                        gradeBadge.className = 'badge bg-success';
+                        scoreVal.className = 'metric-value text-success mt-1';
+                    } else if (grStr === 'WARNING') {
+                        gradeBadge.className = 'badge bg-warning text-dark';
+                        scoreVal.className = 'metric-value text-warning mt-1';
+                    } else if (grStr === 'DEGRADED') {
+                        gradeBadge.className = 'badge bg-warning text-dark';
+                        scoreVal.className = 'metric-value text-warning mt-1';
+                    } else {
+                        gradeBadge.className = 'badge bg-danger';
+                        scoreVal.className = 'metric-value text-danger mt-1';
+                    }
+                }
+            }
+
+            // Sağlık Kırılımı (Breakdown)
+            if (state.healthBreakdown) {
+                let b = state.healthBreakdown;
+                if (document.getElementById('score-temp')) document.getElementById('score-temp').innerText = (b.temperatureScore || 0) + "p";
+                if (document.getElementById('score-press')) document.getElementById('score-press').innerText = (b.pressureScore || 0) + "p";
+                if (document.getElementById('score-conn')) document.getElementById('score-conn').innerText = (b.connectionScore || 0) + "p";
+                if (document.getElementById('score-alarm')) document.getElementById('score-alarm').innerText = (b.alarmScore || 0) + "p";
+            }
+
+            // KPI İstatistikleri
+            if (state.temperatureMin !== null && document.getElementById('kpi-temp-min')) document.getElementById('kpi-temp-min').innerText = state.temperatureMin + "°C";
+            if (state.temperatureAvg !== null && document.getElementById('kpi-temp-avg')) document.getElementById('kpi-temp-avg').innerText = state.temperatureAvg + "°C";
+            if (state.temperatureMax !== null && document.getElementById('kpi-temp-max')) document.getElementById('kpi-temp-max').innerText = state.temperatureMax + "°C";
+
+            if (state.pressureMin !== null && document.getElementById('kpi-press-min')) document.getElementById('kpi-press-min').innerText = state.pressureMin + "b";
+            if (state.pressureAvg !== null && document.getElementById('kpi-press-avg')) document.getElementById('kpi-press-avg').innerText = state.pressureAvg + "b";
+            if (state.pressureMax !== null && document.getElementById('kpi-press-max')) document.getElementById('kpi-press-max').innerText = state.pressureMax + "b";
+
+            if (state.machineRunningRatio !== undefined && document.getElementById('kpi-running-ratio')) document.getElementById('kpi-running-ratio').innerText = state.machineRunningRatio + "%";
+            if (state.totalLogCount !== undefined && document.getElementById('kpi-total-logs')) document.getElementById('kpi-total-logs').innerText = state.totalLogCount.toLocaleString();
+
+            if (state.activeAlarms) renderActiveAlarms(state.activeAlarms);
+        }
+
         async function fetchDigitalTwinState() {
             try {
                 let res = await fetch('http://localhost:5000/api/digitaltwin/state');
                 if (res.ok) {
                     let state = await res.json();
-
-                    if (state.temperatureMin !== null) document.getElementById('kpi-temp-min').innerText = state.temperatureMin + "°C";
-                    if (state.temperatureAvg !== null) document.getElementById('kpi-temp-avg').innerText = state.temperatureAvg + "°C";
-                    if (state.temperatureMax !== null) document.getElementById('kpi-temp-max').innerText = state.temperatureMax + "°C";
-
-                    if (state.pressureMin !== null) document.getElementById('kpi-press-min').innerText = state.pressureMin + "b";
-                    if (state.pressureAvg !== null) document.getElementById('kpi-press-avg').innerText = state.pressureAvg + "b";
-                    if (state.pressureMax !== null) document.getElementById('kpi-press-max').innerText = state.pressureMax + "b";
-
-                    document.getElementById('kpi-running-ratio').innerText = state.machineRunningRatio + "%";
-                    document.getElementById('kpi-total-logs').innerText = state.totalLogCount.toLocaleString();
-
-                    updateDigitalTwinVisuals(state);
-                    updatePlcStatusUI({ state: state.plcConnectionState, isConnected: state.isPlcConnected });
-                    if (state.activeAlarms) renderActiveAlarms(state.activeAlarms);
+                    updateDigitalTwinFullState(state);
                 }
             } catch (err) {
                 console.warn("Digital Twin durumu alınamadı:", err);
@@ -775,6 +845,11 @@
 
         hubConnection.on("ReceiveActiveAlarms", function (alarms) {
             renderActiveAlarms(alarms);
+        });
+
+        // GÜN 2 (Sprint 2.4): Digital Twin Canlı Senkronizasyon Olayı
+        hubConnection.on("ReceiveDigitalTwinState", function (state) {
+            updateDigitalTwinFullState(state);
         });
 
         hubConnection.onreconnecting((error) => {

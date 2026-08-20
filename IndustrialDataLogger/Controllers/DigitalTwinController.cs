@@ -1,10 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using IndustrialDataLogger.Data;
 using IndustrialDataLogger.Models.DTOs;
 using IndustrialDataLogger.Services;
-using System;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -14,96 +10,39 @@ namespace IndustrialDataLogger.Controllers
     [Route("api/[controller]")]
     public class DigitalTwinController : ControllerBase
     {
-        private readonly IPlcService _plcService;
-        private readonly IPlcConnectionManager _connectionManager;
-        private readonly IAlarmService _alarmService;
-        private readonly IndustrialDbContext _dbContext;
+        private readonly IDigitalTwinService _digitalTwinService;
 
-        public DigitalTwinController(
-            IPlcService plcService,
-            IPlcConnectionManager connectionManager,
-            IAlarmService alarmService,
-            IndustrialDbContext dbContext)
+        public DigitalTwinController(IDigitalTwinService digitalTwinService)
         {
-            _plcService = plcService;
-            _connectionManager = connectionManager;
-            _alarmService = alarmService;
-            _dbContext = dbContext;
+            _digitalTwinService = digitalTwinService;
         }
 
         /// <summary>
-        /// Tüm dijital ikiz durumunu (sensörler, PLC bağlantısı, alarmlar, KPI istatistikleri) tek bir modelde döner.
+        /// Tüm dijital ikiz durumunu (sensörler, makine operasyonel durumu, sağlık skoru, alarmlar, KPI istatistikleri) tek bir modelde döner.
         /// </summary>
         [HttpGet("state")]
         public async Task<IActionResult> GetDigitalTwinState(CancellationToken cancellationToken)
         {
-            var isConnected = _connectionManager.IsConnected;
-            var connectionState = _connectionManager.CurrentState.ToString();
+            var state = await _digitalTwinService.GetStateAsync(cancellationToken);
+            return Ok(state);
+        }
 
-            double temp = 0;
-            double pressure = 0;
-            bool machineStatus = false;
-            short errorCode = 0;
-
-            if (isConnected)
+        /// <summary>
+        /// Makinenin kural tabanlı sağlık skorunu ve 4 bileşenli (sıcaklık, basınç, bağlantı, alarm) puan kırılımını döner.
+        /// </summary>
+        [HttpGet("health")]
+        public async Task<IActionResult> GetMachineHealth(CancellationToken cancellationToken)
+        {
+            var state = await _digitalTwinService.GetStateAsync(cancellationToken);
+            return Ok(new
             {
-                var sensorData = await _plcService.ReadSensorDataAsync(cancellationToken);
-                if (sensorData != null)
-                {
-                    temp = Math.Round(sensorData.Temperature, 2);
-                    pressure = Math.Round(sensorData.Pressure, 2);
-                    machineStatus = sensorData.MachineStatus;
-                    errorCode = sensorData.ErrorCode;
-                }
-            }
-
-            var activeAlarms = await _alarmService.GetActiveAlarmsAsync(cancellationToken);
-
-            // KPI İstatistiklerini çek (Performans için optimize edilmiş sorgu)
-            var totalCount = await _dbContext.SensorDataLogs.LongCountAsync(cancellationToken);
-            double? tempMin = null, tempMax = null, tempAvg = null;
-            double? pressMin = null, pressMax = null, pressAvg = null;
-            double runningRatio = 0;
-
-            if (totalCount > 0)
-            {
-                var statsQuery = _dbContext.SensorDataLogs.AsNoTracking();
-                tempMin = Math.Round(await statsQuery.MinAsync(s => s.Temperature, cancellationToken), 2);
-                tempMax = Math.Round(await statsQuery.MaxAsync(s => s.Temperature, cancellationToken), 2);
-                tempAvg = Math.Round(await statsQuery.AverageAsync(s => s.Temperature, cancellationToken), 2);
-
-                pressMin = Math.Round(await statsQuery.MinAsync(s => s.Pressure, cancellationToken), 2);
-                pressMax = Math.Round(await statsQuery.MaxAsync(s => s.Pressure, cancellationToken), 2);
-                pressAvg = Math.Round(await statsQuery.AverageAsync(s => s.Pressure, cancellationToken), 2);
-
-                var runningCount = await statsQuery.LongCountAsync(s => s.MachineStatus, cancellationToken);
-                runningRatio = Math.Round((double)runningCount / totalCount * 100, 2);
-            }
-
-            var dto = new DigitalTwinStateDto
-            {
-                MachineId = "PLC-S7-1200-UNIT-01",
-                MachineName = "Siemens S7-1200 Akıllı Üretim Ünitesi",
-                Temperature = temp,
-                Pressure = pressure,
-                MachineStatus = machineStatus,
-                ErrorCode = errorCode,
-                PlcConnectionState = connectionState,
-                IsPlcConnected = isConnected,
-                LastUpdate = DateTime.UtcNow,
-                ActiveAlarmCount = activeAlarms.Count,
-                ActiveAlarms = activeAlarms,
-                TotalLogCount = totalCount,
-                TemperatureMin = tempMin,
-                TemperatureMax = tempMax,
-                TemperatureAvg = tempAvg,
-                PressureMin = pressMin,
-                PressureMax = pressMax,
-                PressureAvg = pressAvg,
-                MachineRunningRatio = runningRatio
-            };
-
-            return Ok(dto);
+                machineId = state.MachineId,
+                operationalStatus = state.OperationalStatus.ToString(),
+                healthScore = state.HealthScore,
+                healthGrade = state.HealthGrade.ToString(),
+                breakdown = state.HealthBreakdown,
+                lastUpdate = state.LastUpdate
+            });
         }
     }
 }
