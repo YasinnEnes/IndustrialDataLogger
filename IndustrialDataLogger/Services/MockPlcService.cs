@@ -31,7 +31,7 @@ namespace IndustrialDataLogger.Services
             }
             else if (scenario == SimulationScenario.Overheating)
             {
-                _currentTemp = 25.0; // 25°C'den başlasın ve kademeli tırmansın
+                _currentTemp = 76.0; // Hızlı ve belirgin tırmanış için 76°C'den başlasın
                 _currentPressure = 5.0;
                 _isMachineRunning = true;
                 IsConnected = true;
@@ -39,7 +39,7 @@ namespace IndustrialDataLogger.Services
             else if (scenario == SimulationScenario.HighPressure)
             {
                 _currentTemp = 45.0;
-                _currentPressure = 4.0; // 4.0 bar'dan başlasın ve kademeli tırmansın
+                _currentPressure = 7.6; // Hızlı ve belirgin tırmanış için 7.6 bar'dan başlasın
                 _isMachineRunning = true;
                 IsConnected = true;
             }
