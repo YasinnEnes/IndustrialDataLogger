@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using IndustrialDataLogger.Models;
@@ -9,6 +9,7 @@ namespace IndustrialDataLogger.Services
     {
         private readonly Random _random = new Random();
 
+        // Mock servis her zaman simülasyon gereği bağlı kabul edilebilir veya bağlantı yöneticisine bağlanabilir
         public bool IsConnected => true;
 
         public void Connect() { }
@@ -25,9 +26,14 @@ namespace IndustrialDataLogger.Services
             return Task.CompletedTask;
         }
 
-        public Task<SensorData> ReadSensorDataAsync()
+        public Task DisconnectAsync()
         {
-            var data = new SensorData
+            return Task.CompletedTask;
+        }
+
+        public SensorData? ReadSensorData()
+        {
+            return new SensorData
             {
                 Temperature = Math.Round(_random.NextDouble() * 60 + 20, 2),
                 Pressure = Math.Round(_random.NextDouble() * 9 + 1, 2),
@@ -35,40 +41,26 @@ namespace IndustrialDataLogger.Services
                 Timestamp = DateTime.UtcNow,
                 ErrorCode = 0
             };
+        }
 
+        public Task<SensorData?> ReadSensorDataAsync(CancellationToken cancellationToken = default)
+        {
+            SensorData? data = ReadSensorData();
             return Task.FromResult(data);
         }
 
-        public Task<SensorData> ReadSensorDataAsync(CancellationToken cancellationToken = default)
-        {
-            return ReadSensorDataAsync();
-        }
-
-        public Task WriteDataAsync(string variableName, object value)
-        {
-            Console.WriteLine($"[MOCK PLC] Adres: {variableName} | Değer: {value}");
-            return Task.CompletedTask;
-        }
-
-        public Task WriteDataAsync(PlcWriteRequest request, CancellationToken cancellationToken = default)
+        public async Task<bool> WriteDataAsync(PlcWriteRequest request, CancellationToken cancellationToken = default)
         {
             Console.WriteLine($"[MOCK PLC] Adres: {request?.VariableName} | Değer: {request?.Value}");
-            return Task.CompletedTask;
+            await Task.Delay(100, cancellationToken);
+            return true;
         }
 
-        public SensorData ReadSensorData()
+        public async Task<bool> WriteDataAsync(string variableName, object value, CancellationToken cancellationToken = default)
         {
-            throw new NotImplementedException();
-        }
-
-        public Task DisconnectAsync()
-        {
-            throw new NotImplementedException();
-        }
-
-        Task<bool> IPlcService.WriteDataAsync(PlcWriteRequest request, CancellationToken cancellationToken)
-        {
-            throw new NotImplementedException();
+            Console.WriteLine($"[MOCK PLC] Adres: {variableName} | Değer: {value}");
+            await Task.Delay(100, cancellationToken);
+            return true;
         }
     }
 }

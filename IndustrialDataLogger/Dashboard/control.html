@@ -1,21 +1,34 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PLC Komut Paneli</title>
+    <title>PLC Komut Yönetimi - IoT Panel</title>
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- FontAwesome İkonları -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+    <!-- Sunucu/Client Yetki Kontrolü: Müşteri buraya URL ile girmeye çalışırsa engellenir -->
+    <script>
+        const token = sessionStorage.getItem('token');
+        const userRole = sessionStorage.getItem('userRole');
+
+        if (!token) {
+            window.location.replace('login.html');
+        } else if (userRole !== 'Programcı') {
+            alert('Erişim Engellendi (403): Sadece Programcı rolünün PLC Komut sayfasına erişim yetkisi vardır!');
+            window.location.replace('index.html');
+        }
+    </script>
+
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #f9edf0;
+            background-color: #F2F2EB;
         }
-        /* Blush Arka Plan */
+
         .sidebar {
             min-height: 100vh;
             background: #261311;
@@ -23,12 +36,15 @@
             position: fixed;
             top: 0;
             left: 0;
-            width: 250px;
+            width: 260px;
             z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
         }
-        /* Espresso Panel */
+
         .main-content {
-            margin-left: 250px;
+            margin-left: 260px;
             padding: 30px;
         }
 
@@ -46,25 +62,12 @@
                 background: #ba6a36;
                 color: #fff;
             }
-        /* Amber Vurgu */
+
         .card-custom {
             border: none;
             border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
             background-color: #ffffff;
-        }
-
-        @media (max-width: 768px) {
-            .sidebar {
-                width: 100%;
-                position: relative;
-                min-height: auto;
-            }
-
-            .main-content {
-                margin-left: 0;
-                padding: 15px;
-            }
         }
     </style>
 </head>
@@ -73,67 +76,95 @@
     <div class="container-fluid p-0">
         <!-- Sol Menü -->
         <div class="sidebar d-none d-md-block p-3">
-            <h4 class="text-white text-center py-3 mb-4 border-bottom border-secondary">
-                <i class="fa-solid fa-industry text-warning me-2"></i>IoT Panel
-            </h4>
-            <nav>
-                <a href="index.html"><i class="fa-solid fa-chart-line me-2"></i> Canlı İzleme</a>
-                <a href="control.html" class="active"><i class="fa-solid fa-sliders me-2"></i> PLC Komut</a>
-            </nav>
+            <div>
+                <h4 class="text-white text-center py-3 mb-4 border-bottom border-secondary">
+                    <i class="fa-solid fa-industry text-warning me-2"></i>IoT Panel
+                </h4>
+                <nav>
+                    <a href="index.html"><i class="fa-solid fa-chart-line me-2"></i> Grafikler</a>
+                    <a href="control.html" class="active"><i class="fa-solid fa-sliders me-2"></i> PLC Komut</a>
+                </nav>
+            </div>
+            <div class="p-2">
+                <button onclick="logout()" class="btn btn-outline-danger btn-sm w-100 text-start p-2">
+                    <i class="fa-solid fa-right-from-bracket me-1"></i> Çıkış Yap (<span id="user-role-text">Programcı</span>)
+                </button>
+            </div>
         </div>
 
         <!-- Ana İçerik -->
         <div class="main-content">
-            <h2 class="mb-4" style="color: #261311;">PLC Komut ve Veri Yazma Paneli</h2>
+            <h2 class="mb-4" style="color: #261311;">PLC Komut ve Kontrol Paneli</h2>
 
-            <div class="card card-custom p-4" style="max-width: 600px;">
-                <h5 class="mb-3" style="color: #ba6a36;"><i class="fa-solid fa-terminal me-2"></i>PLC'ye Veri Yaz (Komut Gönder)</h5>
+            <div id="status-alert" class="alert d-none shadow-sm mb-4" role="alert"></div>
 
-                <form id="plcForm">
-                    <div class="mb-3">
-                        <label for="variableName" class="form-label fw-bold text-muted">Değişken Adı (Tag / Adres)</label>
-                        <input type="text" class="form-control" id="variableName" placeholder="Örn: DB1.DBX0.0 veya DB1.DBW2" required>
+            <div class="card card-custom p-4">
+                <h5 class="text-warning mb-3"><i class="fa-solid fa-terminal me-2"></i>Komut Gönderim Alanı</h5>
+                <p class="text-muted">Bu alandan PLC cihazınıza doğrudan komutlar gönderebilir ve parametre değiştirebilirsiniz. Bu sayfa yalnızca <strong>Programcı</strong> yetkisine sahip kullanıcılara açıktır.</p>
+
+                <!-- Örnek Komut Arayüzü -->
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold">Hedef Sıcaklık Setpoint (°C)</label>
+                        <input type="number" id="setpointTemp" class="form-control" value="50" step="0.1">
                     </div>
-                    <div class="mb-3">
-                        <label for="variableValue" class="form-label fw-bold text-muted">Gönderilecek Değer</label>
-                        <input type="text" class="form-control" id="variableValue" placeholder="Örn: true, false veya 50" required>
+                    <div class="col-md-12">
+                        <button id="btnSendCommand" onclick="sendPlcCommand()" class="btn btn-success"><i class="fa-solid fa-paper-plane me-1"></i> Komutu PLC'ye Gönder</button>
                     </div>
-                    <button type="submit" class="btn text-white w-100 py-2 fw-bold" style="background-color: #ba6a36;"><i class="fa-solid fa-paper-plane me-2"></i>Komutu Gönder</button>
-                </form>
-                <div id="resultMessage" class="mt-3"></div>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
-        document.getElementById('plcForm').addEventListener('submit', async function (e) {
-            e.preventDefault();
-            let varName = document.getElementById('variableName').value;
-            let varVal = document.getElementById('variableValue').value;
+        const roleSpan = document.getElementById('user-role-text');
+        if (roleSpan && userRole) roleSpan.innerText = userRole;
 
-            // Tip dönüştürme (Boolean veya Sayısal)
-            let parsedVal = varVal;
-            if (varVal.toLowerCase() === 'true') parsedVal = true;
-            else if (varVal.toLowerCase() === 'false') parsedVal = false;
-            else if (!isNaN(varVal)) parsedVal = Number(varVal);
+        function logout() {
+            sessionStorage.clear();
+            window.location.replace('login.html');
+        }
+
+        function showFeedback(message, isSuccess) {
+            const alertBox = document.getElementById('status-alert');
+            alertBox.className = `alert ${isSuccess ? 'alert-success' : 'alert-danger'} shadow-sm mb-4`;
+            alertBox.innerHTML = `<i class="fa-solid ${isSuccess ? 'fa-check-circle' : 'fa-triangle-exclamation'} me-2"></i> ${message}`;
+            alertBox.classList.remove('d-none');
+        }
+
+        async function sendPlcCommand() {
+            const valInput = document.getElementById('setpointTemp');
+            const val = parseFloat(valInput.value);
+            const btn = document.getElementById('btnSendCommand');
+
+            if (isNaN(val)) {
+                showFeedback("Lütfen geçerli bir sayısal değer girin!", false);
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i> Gönderiliyor...';
 
             try {
-                let response = await fetch('http://localhost:5000/api/Sensor/write', {
+                const response = await fetch('http://localhost:5000/api/Sensor/send-command', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ VariableName: varName, Value: parsedVal })
+                    body: JSON.stringify({ setpoint: val })
                 });
 
-                let msgDiv = document.getElementById('resultMessage');
+                const data = await response.json();
                 if (response.ok) {
-                    msgDiv.innerHTML = `<div class="alert alert-success">Komut başarıyla PLC'ye gönderildi!</div>`;
+                    showFeedback(data.message || `Setpoint (${val}) başarıyla PLC'ye iletildi.`, true);
                 } else {
-                    msgDiv.innerHTML = `<div class="alert alert-danger">Komut gönderilemedi! Hata oluştu.</div>`;
+                    showFeedback(data.message || "Komut gönderilemedi!", false);
                 }
-            } catch (error) {
-                document.getElementById('resultMessage').innerHTML = `<div class="alert alert-danger">Bağlantı hatası! API çalışıyor mu?</div>`;
+            } catch (err) {
+                showFeedback("Sunucu ile iletişim kurulamadı. Sunucunun çalıştığından emin olun.", false);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> Komutu PLC\'ye Gönder';
             }
-        });
+        }
     </script>
 </body>
 </html>

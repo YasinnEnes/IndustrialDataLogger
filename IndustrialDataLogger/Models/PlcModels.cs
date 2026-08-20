@@ -16,4 +16,10 @@ namespace IndustrialDataLogger.Models
         public string VariableName { get; set; } = string.Empty;
         public object Value { get; set; } = default!;
     }
+
+    // Yetkilendirilmiş Komut Modeli
+    public class CommandModel
+    {
+        public double Setpoint { get; set; }
+    }
 }

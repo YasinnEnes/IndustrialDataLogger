@@ -1,5 +1,27 @@
-﻿/.vs/
-/bin/
-/obj/
+## Visual Studio & .NET Core
+[Bb]in/
+[Oo]bj/
+.vs/
 *.user
 *.suo
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+
+## Build Results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa]rm/
+[Aa]rm64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+## Scratch & Local Artifacts
+scratch/
+**/scratch/
+.gemini/

@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="IndustrialDataLogger/IndustrialDataLogger.csproj" />
+  <Project Path="IndustrialMonitoring.API/IndustrialMonitoring.API.csproj" Id="8f2503d0-ca76-43e3-9558-ee40eb0c585b" />
+</Solution>

@@ -1,94 +1,111 @@
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
+using IndustrialDataLogger.Data;
+using IndustrialDataLogger.Hubs;
+using IndustrialDataLogger.Models.Entities;
 using IndustrialDataLogger.Services;
-using Npgsql;
-using Microsoft.Extensions.Configuration;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace IndustrialDataLogger
 {
     public class Worker : BackgroundService
     {
         private readonly ILogger<Worker> _logger;
-        private readonly IPlcService _plcService;
-        private readonly string _connectionString;
+        private readonly IServiceProvider _serviceProvider;
+        private readonly IHubContext<MonitoringHub> _hubContext;
 
-        // IConfiguration'ı da içeri alarak appsettings.json'daki veritabanı şifremize ulaşıyoruz
-        public Worker(ILogger<Worker> logger, IPlcService plcService, IConfiguration configuration)
+        public Worker(
+            ILogger<Worker> logger,
+            IServiceProvider serviceProvider,
+            IHubContext<MonitoringHub> hubContext)
         {
             _logger = logger;
-            _plcService = plcService;
-            _connectionString = configuration.GetConnectionString("PostgreSql")!;
+            _serviceProvider = serviceProvider;
+            _hubContext = hubContext;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("Industrial Data Logger başlatıldı...");
-
-            try
-            {
-                _plcService.Connect();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"İlk bağlantı denemesinde hata: {ex.Message}");
-            }
+            _logger.LogInformation("Industrial Data Logger arka plan servisi başlatıldı (EF Core Logging & SignalR Real-Time Push).");
 
             while (!stoppingToken.IsCancellationRequested)
             {
                 try
                 {
-                    if (_plcService.IsConnected)
+                    // Servisler ihtiyaç duyulduğu an (anlık olarak) container'dan çekilir. Bu sayede DI asla döngüye girmez!
+                    using var scope = _serviceProvider.CreateScope();
+                    var plcService = scope.ServiceProvider.GetRequiredService<IPlcService>();
+                    var connectionManager = scope.ServiceProvider.GetRequiredService<IPlcConnectionManager>();
+                    var alarmService = scope.ServiceProvider.GetRequiredService<IAlarmService>();
+
+                    // GÜN 4: PLC bağlantı durumunu alarm motoruna bildir
+                    await alarmService.ProcessPlcStatusAsync(connectionManager.CurrentState, stoppingToken);
+
+                    // GÜN 3: PLC durumunu anlık olarak SignalR istemcilerine yayınla
+                    await _hubContext.Clients.All.SendAsync("ReceivePlcStatus", new
                     {
-                        // 1. PLC'den veriyi oku
-                        // Veriyi oku
-                        var data = await _plcService.ReadSensorDataAsync(); // veya senkron okuma ise ReadSensorData();
+                        isConnected = connectionManager.IsConnected,
+                        state = connectionManager.CurrentState.ToString()
+                    }, stoppingToken);
 
-                        // EĞER VERİ NULL GELDİYSE KODUN ÇÖKMEMESİ İÇİN KONTROL EKLEYELİM
-                        if (data == null)
-                        {
-                            _logger.LogWarning("PLC'den veri alınamadı, cihaz bağlantısı kurulamıyor olabilir.");
-                            return; // Bu turu atla, çökmesini engelle
-                        }
-
-                        // Null değilse güvenle logla ve veritabanına yaz
-                        _logger.LogInformation($"Okunan Değerler -> Sıcaklık: {data.Temperature}°C | Basınç: {data.Pressure} bar | Motor: {data.MachineStatus}");
-
-                        // 3. Veritabanına kaydet
-                        try
-                        {
-                            using var conn = new NpgsqlConnection(_connectionString);
-                            await conn.OpenAsync(stoppingToken);
-
-                            var sql = "INSERT INTO sensordata (timestamp, temperature, pressure, machinestatus) VALUES (@t, @temp, @press, @status)";
-                            using var cmd = new NpgsqlCommand(sql, conn);
-
-                            cmd.Parameters.AddWithValue("t", DateTime.Now);
-                            cmd.Parameters.AddWithValue("temp", data.Temperature);
-                            cmd.Parameters.AddWithValue("press", data.Pressure);
-                            cmd.Parameters.AddWithValue("status", data.MachineStatus);
-
-                            await cmd.ExecuteNonQueryAsync(stoppingToken);
-                        }
-                        catch (Exception dbEx)
-                        {
-                            _logger.LogError($"Veritabanına yazılırken hata oluştu: {dbEx.Message}");
-                        }
-                    }
-                    else
+                    if (connectionManager.IsConnected)
                     {
-                        _logger.LogWarning("PLC'ye bağlı değil! Yeniden bağlanmaya çalışılıyor...");
-                        _plcService.Connect();
+                        var data = await plcService.ReadSensorDataAsync(stoppingToken);
+
+                        if (data != null)
+                        {
+                            _logger.LogInformation($"Okunan Değerler -> Sıcaklık: {data.Temperature}°C | Basınç: {data.Pressure} bar | Durum: {(data.MachineStatus ? "Çalışıyor" : "Durdu")}");
+
+                            // GÜN 4 (Sprint 4.2): Sensör verilerini kural motorundan (Alarm Engine) geçir
+                            await alarmService.ProcessSensorReadingAsync(data, stoppingToken);
+
+                            // GÜN 3 (Sprint 3.3): SignalR üzerinden tüm bağlı istemcilere anlık PUSH
+                            await _hubContext.Clients.All.SendAsync("ReceiveSensorData", new
+                            {
+                                timestamp = data.Timestamp,
+                                temperature = Math.Round(data.Temperature, 2),
+                                pressure = Math.Round(data.Pressure, 2),
+                                machineStatus = data.MachineStatus,
+                                errorCode = data.ErrorCode
+                            }, stoppingToken);
+
+                            // GÜN 2: EF Core ile PostgreSQL veritabanına loglama
+                            try
+                            {
+                                var dbContext = scope.ServiceProvider.GetService<IndustrialDbContext>();
+                                if (dbContext != null)
+                                {
+                                    var logEntity = new SensorDataLog
+                                    {
+                                        Timestamp = DateTime.UtcNow,
+                                        Temperature = data.Temperature,
+                                        Pressure = data.Pressure,
+                                        MachineStatus = data.MachineStatus,
+                                        ErrorCode = data.ErrorCode
+                                    };
+
+                                    await dbContext.SensorDataLogs.AddAsync(logEntity, stoppingToken);
+                                    await dbContext.SaveChangesAsync(stoppingToken);
+                                }
+                            }
+                            catch (Exception dbEx)
+                            {
+                                _logger.LogWarning("Veritabanı kaydı sırasında hata: {Message}", dbEx.Message);
+                            }
+                        }
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError($"Döngü sırasında bir hata oluştu: {ex.Message}");
+                    _logger.LogError("Worker döngü hatası: {Message}", ex.Message);
                 }
 
-                // Döngünün sistemi kitlememesi için 1 saniye (1000 milisaniye) bekleme süresi
-                await Task.Delay(1000, stoppingToken);
+                await Task.Delay(2000, stoppingToken);
             }
-
-            _plcService.Disconnect();
-            _logger.LogInformation("Industrial Data Logger durduruldu.");
         }
     }
 }

@@ -1,21 +1,31 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Industrial IoT & PLC Canlı İzleme</title>
-    <!-- Bootstrap 5 CSS -->
+    <title>Industrial IoT & Dijital İkiz Paneli</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- FontAwesome İkonları -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+    <script>
+        (function () {
+            const token = sessionStorage.getItem('token');
+            const userRole = sessionStorage.getItem('userRole');
+            if (!token || !userRole) {
+                sessionStorage.clear();
+                window.location.replace('login.html');
+            }
+        })();
+    </script>
+
     <style>
         body {
             font-family: 'Inter', sans-serif;
             background-color: #F2F2EB;
+            color: #261311;
         }
 
         .sidebar {
@@ -34,46 +44,111 @@
 
         .main-content {
             margin-left: 260px;
-            padding: 30px;
+            padding: 28px 36px;
         }
 
         .sidebar a {
             color: #d6c5c2;
             text-decoration: none;
             padding: 12px 20px;
-            display: block;
+            display: flex;
+            align-items: center;
             border-radius: 8px;
             margin: 4px 10px;
-            transition: all 0.3s;
+            font-weight: 500;
+            transition: all 0.25s ease;
         }
 
-            .sidebar a:hover, .sidebar a.active {
-                background: #ba6a36;
-                color: #fff;
-            }
+        .sidebar a:hover, .sidebar a.active {
+            background: #ba6a36;
+            color: #fff;
+        }
 
         .card-custom {
             border: none;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            border-radius: 14px;
             background-color: #ffffff;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
 
         .metric-value {
-            font-size: 2rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 2.1rem;
             font-weight: 700;
+            letter-spacing: -0.5px;
         }
 
-        @media (max-width: 768px) {
+        /* Clean Machine Visualizer */
+        .twin-stage {
+            background: #f8fafc;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            overflow: hidden;
+        }
+
+        .rotor-spin {
+            transform-origin: 140px 100px;
+            animation: spin-rotor 1.6s linear infinite;
+        }
+
+        .rotor-stopped {
+            transform-origin: 140px 100px;
+            animation: none !important;
+        }
+
+        @keyframes spin-rotor {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .flow-dash {
+            stroke-dasharray: 6, 6;
+            animation: flow-pipe 1s linear infinite;
+        }
+
+        .flow-stopped {
+            animation: none !important;
+        }
+
+        @keyframes flow-pipe {
+            from { stroke-dashoffset: 24; }
+            to { stroke-dashoffset: 0; }
+        }
+
+        /* Alarms */
+        .alarm-critical-pulse {
+            animation: pulse-border 1.5s infinite;
+            border-left: 5px solid #dc3545 !important;
+            background-color: #fff5f5 !important;
+        }
+
+        .alarm-warning-border {
+            border-left: 5px solid #f59e0b !important;
+            background-color: #fffdf5 !important;
+        }
+
+        @keyframes pulse-border {
+            0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.35); }
+            70% { box-shadow: 0 0 0 8px rgba(220, 53, 69, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+        }
+
+        .range-btn.active {
+            background-color: #ba6a36 !important;
+            color: #fff !important;
+            border-color: #ba6a36 !important;
+        }
+
+        @media (max-width: 992px) {
             .sidebar {
                 width: 100%;
                 position: relative;
                 min-height: auto;
             }
-
             .main-content {
                 margin-left: 0;
-                padding: 15px;
+                padding: 16px;
             }
         }
     </style>
@@ -81,110 +156,236 @@
 <body>
 
     <div class="container-fluid p-0">
-        <!-- Sol Menü & PLC Bağlantı Paneli -->
-        <div class="sidebar d-none d-md-block p-3">
+        <!-- Sidebar Navigation -->
+        <div class="sidebar d-none d-lg-flex p-3">
             <div>
-                <h4 class="text-white text-center py-3 mb-4 border-bottom border-secondary">
+                <h4 class="text-white text-center py-3 mb-4 border-bottom border-secondary border-opacity-25">
                     <i class="fa-solid fa-industry text-warning me-2"></i>IoT Panel
                 </h4>
-                <nav>
-                    <a href="index.html" class="active"><i class="fa-solid fa-chart-line me-2"></i> Canlı İzleme</a>
-                    <a href="control.html"><i class="fa-solid fa-sliders me-2"></i> PLC Komut</a>
+                <nav id="sidebar-nav">
+                    <a href="index.html" class="active"><i class="fa-solid fa-chart-line me-2"></i> Grafikler & Dijital İkiz</a>
                 </nav>
             </div>
 
-            <!-- Sol Panel Alt Kısım: PLC Bağlantı Kontrol Sekmesi -->
-            <div class="p-3 bg-black bg-opacity-25 rounded-3 mb-2 border border-secondary border-opacity-25">
-                <h6 class="text-warning mb-2 fs-6"><i class="fa-solid fa-network-wired me-1"></i> PLC Bağlantı Yönetimi</h6>
-                <div class="mb-2">
-                    <span id="left-conn-status" class="badge bg-secondary w-100 p-2 text-start"><i class="fa-solid fa-circle-dot me-1"></i> Durum Bekleniyor...</span>
+            <!-- PLC Management Section -->
+            <div id="plc-management-section">
+                <div class="p-3 bg-black bg-opacity-25 rounded-3 mb-3 border border-secondary border-opacity-25">
+                    <h6 class="text-warning mb-2 fs-6"><i class="fa-solid fa-network-wired me-1"></i> PLC Bağlantı Yönetimi</h6>
+                    <div class="mb-2">
+                        <span id="left-conn-status" class="badge bg-secondary w-100 p-2 text-start"><i class="fa-solid fa-circle-dot me-1"></i> Durum Bekleniyor...</span>
+                    </div>
+                    <div class="d-grid gap-1">
+                        <button onclick="checkPlcConnection()" class="btn btn-outline-light btn-sm text-start"><i class="fa-solid fa-rotate me-1"></i> Bağlantıyı Test Et</button>
+                        <button onclick="managePlcConnection('connect')" class="btn btn-success btn-sm text-start"><i class="fa-solid fa-plug me-1"></i> Bağlan</button>
+                        <button onclick="managePlcConnection('disconnect')" class="btn btn-danger btn-sm text-start"><i class="fa-solid fa-power-off me-1"></i> Bağlantıyı Kes</button>
+                    </div>
                 </div>
-                <div class="d-grid gap-1">
-                    <button onclick="checkPlcConnection()" class="btn btn-outline-light btn-sm text-start"><i class="fa-solid fa-rotate me-1"></i> Bağlantıyı Test Et</button>
-                    <button onclick="managePlcConnection('connect')" class="btn btn-success btn-sm text-start"><i class="fa-solid fa-plug me-1"></i> Bağlan</button>
-                    <button onclick="managePlcConnection('disconnect')" class="btn btn-danger btn-sm text-start"><i class="fa-solid fa-power-off me-1"></i> Bağlantıyı Kes</button>
-                </div>
+            </div>
+
+            <!-- Logout -->
+            <div class="p-2">
+                <button onclick="logout()" class="btn btn-outline-danger btn-sm w-100 text-start p-2">
+                    <i class="fa-solid fa-right-from-bracket me-1"></i> Çıkış Yap (<span id="logged-user-role"></span>)
+                </button>
             </div>
         </div>
 
-        <!-- Ana İçerik -->
+        <!-- Main Content Area -->
         <div class="main-content">
-
-            <!-- Web Üzerinde Çıkacak Hata / Bilgilendirme Banner Alanı -->
             <div id="alert-banner" class="alert alert-danger d-none shadow-sm mb-4" role="alert">
-                <i class="fa-solid fa-triangle-exclamation me-2"></i> <span id="alert-message">Bağlantı hatası oluştu!</span>
+                <i class="fa-solid fa-triangle-exclamation me-2"></i> <span id="alert-message">Bağlantı hatası!</span>
             </div>
 
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2 style="color: #261311;">Endüstriyel Canlı İzleme Paneli</h2>
-
-                <div class="d-flex align-items-center">
-                    <!-- Mod Değiştirme Switch Butonu -->
-                    <div class="form-check form-switch me-4">
-                        <input class="form-check-input" type="checkbox" id="modeSwitch" checked style="width: 3em; height: 1.5em; cursor: pointer;">
-                        <label class="form-check-label fw-bold ms-2 mt-1" id="modeLabel" for="modeSwitch" style="color: #261311;">Simülasyon Modu</label>
-                    </div>
-                    <!-- Üst Durum Rozeti -->
-                    <span id="connection-status" class="badge bg-secondary p-2"><i class="fa-solid fa-circle-dot me-1"></i> Kontrol Ediliyor...</span>
+            <!-- Header Bar -->
+            <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+                <div>
+                    <h2 class="fw-bold mb-1" style="color: #261311;">Endüstriyel Canlı İzleme & Dijital İkiz</h2>
+                    <p class="text-muted mb-0 small">Siemens S7-1200 PLC Gerçek Zamanlı Telemetri Paneli</p>
                 </div>
-            </div>
-
-            <!-- Anlık Metrik Kartları -->
-            <div class="row g-4 mb-4">
-                <div class="col-md-4">
-                    <div class="card card-custom p-3">
-                        <h6 class="text-muted mb-1">Anlık Sıcaklık</h6>
-                        <div class="metric-value text-danger" id="temp-val">0.0 °C</div>
+                <div class="d-flex align-items-center gap-3">
+                    <div class="form-check form-switch bg-white p-2 px-3 rounded-pill shadow-sm border d-flex align-items-center">
+                        <input class="form-check-input ms-0 me-2" type="checkbox" id="modeSwitch" checked style="width: 2.6em; height: 1.3em; cursor: pointer;">
+                        <label class="form-check-label fw-bold text-dark small" id="modeLabel" for="modeSwitch">Simülasyon Modu</label>
                     </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card card-custom p-3">
-                        <h6 class="text-muted mb-1">Anlık Basınç</h6>
-                        <div class="metric-value text-primary" id="pressure-val">0.0 bar</div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card card-custom p-3">
-                        <h6 class="text-muted mb-1">Makine Durumu</h6>
-                        <div class="metric-value" id="status-val">---</div>
-                    </div>
+                    <span id="connection-status" class="badge bg-secondary p-2 px-3 rounded-pill"><i class="fa-solid fa-circle-dot me-1"></i> Kontrol Ediliyor...</span>
                 </div>
             </div>
 
-            <!-- Grafik Alanları -->
-            <div class="row mb-4">
+            <!-- Metric Cards Row -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-4">
+                    <div class="card card-custom p-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="text-muted small fw-bold">ANLIK SICAKLIK</span>
+                            <i class="fa-solid fa-temperature-three-quarters text-danger"></i>
+                        </div>
+                        <div class="metric-value text-danger mt-1" id="temp-val">0.0 °C</div>
+                        <div class="d-flex justify-content-between text-muted small mt-2" style="font-size: 0.75rem;">
+                            <span>Min: <b class="text-dark" id="kpi-temp-min">--</b></span>
+                            <span>Ort: <b class="text-dark" id="kpi-temp-avg">--</b></span>
+                            <span>Maks: <b class="text-dark" id="kpi-temp-max">--</b></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="card card-custom p-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="text-muted small fw-bold">ANLIK BASINÇ</span>
+                            <i class="fa-solid fa-gauge-high text-primary"></i>
+                        </div>
+                        <div class="metric-value text-primary mt-1" id="pressure-val">0.0 bar</div>
+                        <div class="d-flex justify-content-between text-muted small mt-2" style="font-size: 0.75rem;">
+                            <span>Min: <b class="text-dark" id="kpi-press-min">--</b></span>
+                            <span>Ort: <b class="text-dark" id="kpi-press-avg">--</b></span>
+                            <span>Maks: <b class="text-dark" id="kpi-press-max">--</b></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="card card-custom p-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="text-muted small fw-bold">MAKİNE DURUMU</span>
+                            <span id="twin-status-tag" class="badge bg-secondary">DURDU</span>
+                        </div>
+                        <div class="metric-value mt-1" id="status-val">DURDU</div>
+                        <div class="d-flex justify-content-between text-muted small mt-2" style="font-size: 0.75rem;">
+                            <span>Çalışma Oranı: <b class="text-success" id="kpi-running-ratio">--%</b></span>
+                            <span>Kayıt: <b class="text-dark" id="kpi-total-logs">--</b></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Digital Machine Representation (Kompakt & Sade) -->
+            <div class="card card-custom p-3 mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="fw-bold mb-0 text-dark">
+                        <i class="fa-solid fa-microchip text-primary me-2"></i>Dijital Makine Temsili (Digital Twin)
+                    </h6>
+                    <span id="machine-hud-badge" class="badge bg-success" style="font-size: 0.75rem;">Canlı Telemetri</span>
+                </div>
+
+                <div class="twin-stage p-2 d-flex justify-content-center align-items-center">
+                    <svg viewBox="0 0 500 130" width="100%" height="130" xmlns="http://www.w3.org/2000/svg">
+                        <!-- Machine Body -->
+                        <rect x="40" y="15" width="420" height="100" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5" />
+                        
+                        <!-- Pipe Lines -->
+                        <path d="M 10 65 L 50 65" stroke="#3b82f6" stroke-width="5" fill="none" class="flow-dash" id="pipe-in" />
+                        <path d="M 450 65 L 490 65" stroke="#3b82f6" stroke-width="5" fill="none" class="flow-dash" id="pipe-out" />
+
+                        <!-- Rotor Chamber -->
+                        <circle cx="130" cy="65" r="38" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5" />
+                        <g id="rotor-group" class="rotor-spin" style="transform-origin: 130px 65px;">
+                            <circle cx="130" cy="65" r="10" fill="#ba6a36" />
+                            <line x1="130" y1="35" x2="130" y2="95" stroke="#64748b" stroke-width="4" stroke-linecap="round" />
+                            <line x1="100" y1="65" x2="160" y2="65" stroke="#64748b" stroke-width="4" stroke-linecap="round" />
+                            <line x1="108" y1="43" x2="152" y2="87" stroke="#64748b" stroke-width="4" stroke-linecap="round" />
+                            <line x1="108" y1="87" x2="152" y2="43" stroke="#64748b" stroke-width="4" stroke-linecap="round" />
+                            <circle cx="130" cy="65" r="4" fill="#ffffff" />
+                        </g>
+
+                        <!-- Thermal Chamber -->
+                        <rect x="210" y="25" width="220" height="80" rx="8" id="thermal-chamber" fill="#e0f2fe" stroke="#38bdf8" stroke-width="1.5" />
+                        
+                        <text x="130" y="118" font-size="10" fill="#64748b" text-anchor="middle" font-weight="600">ANA MOTOR</text>
+                        <text x="320" y="118" font-size="10" fill="#64748b" text-anchor="middle" font-weight="600">TERMAL BASINÇ ODASI</text>
+
+                        <!-- Live Values inside SVG -->
+                        <text x="320" y="60" font-size="16" fill="#ef4444" text-anchor="middle" font-weight="700" id="svg-temp-text">0.0 °C</text>
+                        <text x="320" y="82" font-size="14" fill="#0284c7" text-anchor="middle" font-weight="600" id="svg-press-text">0.0 bar</text>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- Alarms Panel -->
+            <div class="card card-custom p-3 mb-3" id="alarm-panel-card">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <h6 class="mb-0 text-dark fw-bold">
+                        <i class="fa-solid fa-triangle-exclamation text-warning me-2"></i>Aktif Alarmlar & Teşhis Paneli
+                    </h6>
+                    <span class="badge bg-success" id="alarm-count-badge" style="font-size: 0.75rem;">0 Aktif Alarm</span>
+                </div>
+                <div id="active-alarms-list" class="mt-2">
+                    <div class="text-muted small py-1" style="font-size: 0.8rem;">
+                        <i class="fa-solid fa-circle-check text-success me-1"></i> Tüm sistem parametreleri normal aralıkta. Aktif alarm bulunmuyor.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row (1.75x Yükseklik - 280px) -->
+            <div class="row g-3 mb-3">
                 <div class="col-md-6">
-                    <div class="card card-custom p-4">
-                        <h5 class="mb-3 text-danger"><i class="fa-solid fa-temperature-three-quarters me-2"></i>Sıcaklık Takibi</h5>
-                        <canvas id="tempChart" height="280"></canvas>
+                    <div class="card card-custom p-3">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center mb-2 gap-2">
+                            <h6 class="mb-0 text-danger fw-bold"><i class="fa-solid fa-temperature-three-quarters me-1"></i>Sıcaklık Takibi</h6>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button type="button" class="btn btn-outline-secondary range-btn active py-0 px-2" style="font-size: 0.75rem;" onclick="setChartRange(20, this)">Canlı (20)</button>
+                                <button type="button" class="btn btn-outline-secondary range-btn py-0 px-2" style="font-size: 0.75rem;" onclick="setChartRange(50, this)">Son 50 (DB)</button>
+                                <button type="button" class="btn btn-outline-secondary range-btn py-0 px-2" style="font-size: 0.75rem;" onclick="setChartRange(100, this)">Son 100 (DB)</button>
+                            </div>
+                        </div>
+                        <div style="position: relative; height: 280px; width: 100%;">
+                            <canvas id="tempChart"></canvas>
+                        </div>
                     </div>
                 </div>
                 <div class="col-md-6">
-                    <div class="card card-custom p-4">
-                        <h5 class="mb-3 text-primary"><i class="fa-solid fa-gauge-high me-2"></i>Basınç Takibi</h5>
-                        <canvas id="pressureChart" height="280"></canvas>
+                    <div class="card card-custom p-3">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center mb-2 gap-2">
+                            <h6 class="mb-0 text-primary fw-bold"><i class="fa-solid fa-gauge-high me-1"></i>Basınç Takibi</h6>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button type="button" class="btn btn-outline-secondary range-btn active py-0 px-2" style="font-size: 0.75rem;" onclick="setChartRange(20, this)">Canlı (20)</button>
+                                <button type="button" class="btn btn-outline-secondary range-btn py-0 px-2" style="font-size: 0.75rem;" onclick="setChartRange(50, this)">Son 50 (DB)</button>
+                                <button type="button" class="btn btn-outline-secondary range-btn py-0 px-2" style="font-size: 0.75rem;" onclick="setChartRange(100, this)">Son 100 (DB)</button>
+                            </div>
+                        </div>
+                        <div style="position: relative; height: 280px; width: 100%;">
+                            <canvas id="pressureChart"></canvas>
+                        </div>
                     </div>
                 </div>
             </div>
-
         </div>
     </div>
 
-    <!-- JavaScript & Kontrol Kodları -->
     <script>
-        // Kullanıcının manuel olarak bağlantıyı kesip kesmediğini tutan kilit değişkeni
-        let isUserDisconnected = false;
+        const userRole = sessionStorage.getItem('userRole');
+
+        function renderSidebarMenu() {
+            const nav = document.getElementById('sidebar-nav');
+            const roleBadge = document.getElementById('logged-user-role');
+            if (roleBadge) roleBadge.innerText = userRole || 'Misafir';
+
+            let menuHTML = `<a href="index.html" class="active"><i class="fa-solid fa-chart-line me-2"></i> Grafikler & Dijital İkiz</a>`;
+
+            if (userRole === 'Programcı') {
+                menuHTML += `<a href="control.html"><i class="fa-solid fa-sliders me-2"></i> PLC Komut</a>`;
+            } else {
+                const plcMgmt = document.getElementById('plc-management-section');
+                if (plcMgmt) plcMgmt.style.display = 'none';
+            }
+            if (nav) nav.innerHTML = menuHTML;
+        }
+        renderSidebarMenu();
+
+        function logout() {
+            sessionStorage.clear();
+            window.location.replace('login.html');
+        }
 
         function showAlert(msg) {
             let banner = document.getElementById('alert-banner');
             let msgSpan = document.getElementById('alert-message');
-            msgSpan.innerText = msg;
-            banner.classList.remove('d-none');
+            if (msgSpan) msgSpan.innerText = msg;
+            if (banner) banner.classList.remove('d-none');
         }
 
         function hideAlert() {
             let banner = document.getElementById('alert-banner');
-            banner.classList.add('d-none');
+            if (banner) banner.classList.add('d-none');
         }
 
         async function checkMode() {
@@ -194,8 +395,8 @@
                     let data = await res.json();
                     let sw = document.getElementById('modeSwitch');
                     let lbl = document.getElementById('modeLabel');
-                    sw.checked = data.isSimulation;
-                    lbl.innerText = data.isSimulation ? "Simülasyon Modu" : "Gerçek Sensör Modu";
+                    if (sw) sw.checked = data.isSimulation;
+                    if (lbl) lbl.innerText = data.isSimulation ? "Simülasyon Modu" : "Gerçek Sensör Modu";
                 }
             } catch (e) { console.error("Mod alınamadı"); }
         }
@@ -211,154 +412,390 @@
                     body: JSON.stringify({ isSimulation: isSim })
                 });
                 if (res.ok) {
-                    lbl.innerText = isSim ? "Simülasyon Modu" : "Gerçek Sensör Modu";
+                    if (lbl) lbl.innerText = isSim ? "Simülasyon Modu" : "Gerçek Sensör Modu";
                     hideAlert();
                 }
             } catch (e) { console.error("Mod değiştirilemedi"); }
         });
 
         async function checkPlcConnection() {
-            if (isUserDisconnected) {
-                alert("Bağlantı manuel olarak kapalı. Lütfen önce 'Bağlan' butonuna basın.");
-                return;
-            }
             try {
-                let res = await fetch('http://localhost:5000/api/Sensor/connection-status');
+                let res = await fetch('http://localhost:5000/api/plc/status');
                 if (res.ok) {
                     let data = await res.json();
-                    if (data.isConnected) {
-                        alert("PLC Bağlantısı Başarılı ve Aktif!");
-                        hideAlert();
-                    } else {
-                        alert("Uyarı: PLC'ye bağlı değil!");
-                    }
+                    alert(`PLC Anlık Durumu: ${data.state} (Bağlı: ${data.isConnected})`);
+                } else {
+                    alert("PLC durum bilgisine ulaşılamadı (HTTP " + res.status + ")!");
                 }
-            } catch (e) { alert("Sunucuya erişilemiyor!"); }
+            } catch (e) {
+                alert("Sunucuya (http://localhost:5000) erişilemiyor! Lütfen backend uygulamasının çalıştığından emin olun.");
+            }
         }
 
         async function managePlcConnection(action) {
-            if (action === 'connect') {
-                isUserDisconnected = false; // Kilidi aç
-            }
-
             try {
-                let res = await fetch(`http://localhost:5000/api/Sensor/${action}`, { method: 'POST' });
+                let endpoint = action === 'connect' ? 'http://localhost:5000/api/Sensor/connect' : 'http://localhost:5000/api/Sensor/disconnect';
+                let res = await fetch(endpoint, { method: 'POST' });
+                let data = await res.json();
+
                 if (res.ok) {
-                    let data = await res.json();
                     alert(data.message || "İşlem başarılı.");
-
-                    if (action === 'disconnect') {
-                        isUserDisconnected = true; // KİLİTLE: Kullanıcı manuel kesti
-                        forceClearUI();
-                    }
-
-                    fetchLatestData();
+                    hideAlert();
+                    fetchActiveAlarms();
+                    fetchDigitalTwinState();
                 } else {
-                    alert("İşlem gerçekleştirilemedi.");
+                    alert(data.message || "Bağlantı hatası!");
+                    showAlert(data.message || "Bağlantı kurulamadı.");
                 }
             } catch (e) {
-                alert("Bağlantı hatası oluştu!");
+                alert("Sunucuya erişilemediği için komut iletilemedi! Lütfen backend uygulamasını başlatın.");
+                showAlert("Sunucu bağlantısı kurulamadı (http://localhost:5000).");
             }
         }
+
+        // Charts Configuration (Light Theme)
+        const chartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    grid: { color: 'rgba(0,0,0,0.05)' },
+                    ticks: { color: '#64748b', font: { size: 10 } }
+                },
+                y: {
+                    grid: { color: 'rgba(0,0,0,0.05)' },
+                    ticks: { color: '#64748b', font: { size: 10 } }
+                }
+            },
+            plugins: {
+                legend: { labels: { color: '#261311' } }
+            }
+        };
 
         const tempCtx = document.getElementById('tempChart').getContext('2d');
         const tempChart = new Chart(tempCtx, {
             type: 'line',
             data: { labels: [], datasets: [{ label: 'Sıcaklık (°C)', data: [], borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', fill: true, tension: 0.3 }] },
-            options: { responsive: true, scales: { y: { beginAtZero: false } } }
+            options: chartOptions
         });
 
         const pressCtx = document.getElementById('pressureChart').getContext('2d');
         const pressureChart = new Chart(pressCtx, {
             type: 'line',
             data: { labels: [], datasets: [{ label: 'Basınç (bar)', data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', fill: true, tension: 0.3 }] },
-            options: { responsive: true, scales: { y: { beginAtZero: true } } }
+            options: chartOptions
         });
 
+        let currentMaxPoints = 20;
+
+        async function setChartRange(limit, btnEl) {
+            currentMaxPoints = limit;
+            document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+            if (btnEl) btnEl.classList.add('active');
+
+            try {
+                let res = await fetch(`http://localhost:5000/api/Sensor/history?limit=${limit}`);
+                if (res.ok) {
+                    let history = await res.json();
+                    history.reverse();
+
+                    tempChart.data.labels = history.map(h => new Date(h.timestamp).toLocaleTimeString());
+                    tempChart.data.datasets[0].data = history.map(h => typeof h.temperature === 'number' ? h.temperature : parseFloat(h.temperature) || 0);
+
+                    pressureChart.data.labels = history.map(h => new Date(h.timestamp).toLocaleTimeString());
+                    pressureChart.data.datasets[0].data = history.map(h => typeof h.pressure === 'number' ? h.pressure : parseFloat(h.pressure) || 0);
+
+                    tempChart.update();
+                    pressureChart.update();
+                }
+            } catch (err) {
+                console.warn("Geçmiş veri yüklenemedi:", err);
+            }
+        }
+
         function forceClearUI() {
-            let badge = document.getElementById('connection-status');
-            let leftBadge = document.getElementById('left-conn-status');
-
-            badge.className = "badge bg-danger p-2";
-            badge.innerHTML = '<i class="fa-solid fa-triangle-exclamation me-1"></i> PLC Bağlı Değil';
-            leftBadge.className = "badge bg-danger w-100 p-2 text-start";
-            leftBadge.innerHTML = '<i class="fa-solid fa-triangle-exclamation me-1"></i> Bağlantı Yok';
-
             document.getElementById('temp-val').innerText = "0.0 °C";
             document.getElementById('pressure-val').innerText = "0.0 bar";
             let statusEl = document.getElementById('status-val');
             statusEl.innerText = "DURDU";
             statusEl.className = "metric-value text-danger";
 
-            tempChart.data.labels = [];
-            tempChart.data.datasets[0].data = [];
-            tempChart.update();
+            let rotor = document.getElementById('rotor-group');
+            if (rotor) rotor.className.baseVal = "rotor-stopped";
+            let pipeIn = document.getElementById('pipe-in');
+            let pipeOut = document.getElementById('pipe-out');
+            if (pipeIn) pipeIn.className.baseVal = "flow-stopped";
+            if (pipeOut) pipeOut.className.baseVal = "flow-stopped";
+        }
 
-            pressureChart.data.labels = [];
-            pressureChart.data.datasets[0].data = [];
+        function updateDigitalTwinVisuals(data) {
+            if (!data) return;
+
+            let tempNum = typeof data.temperature === 'number' ? data.temperature : parseFloat(data.temperature) || 0;
+            let pressNum = typeof data.pressure === 'number' ? data.pressure : parseFloat(data.pressure) || 0;
+            let isRunning = !!data.machineStatus;
+
+            // 1. Metric Cards
+            document.getElementById('temp-val').innerText = tempNum.toFixed(1) + " °C";
+            document.getElementById('pressure-val').innerText = pressNum.toFixed(1) + " bar";
+            let statusEl = document.getElementById('status-val');
+            statusEl.innerText = isRunning ? "ÇALIŞIYOR" : "DURDU";
+            statusEl.className = isRunning ? "metric-value text-success" : "metric-value text-danger";
+
+            let twinTag = document.getElementById('twin-status-tag');
+            if (twinTag) {
+                twinTag.className = isRunning ? "badge bg-success" : "badge bg-danger";
+                twinTag.innerText = isRunning ? "ÇALIŞIYOR" : "DURDU";
+            }
+
+            // 2. SVG Schematic
+            let svgTemp = document.getElementById('svg-temp-text');
+            let svgPress = document.getElementById('svg-press-text');
+            if (svgTemp) svgTemp.textContent = tempNum.toFixed(1) + " °C";
+            if (svgPress) svgPress.textContent = pressNum.toFixed(1) + " bar";
+
+            let rotor = document.getElementById('rotor-group');
+            if (rotor) rotor.className.baseVal = isRunning ? "rotor-spin" : "rotor-stopped";
+
+            let pipeIn = document.getElementById('pipe-in');
+            let pipeOut = document.getElementById('pipe-out');
+            if (pipeIn) pipeIn.className.baseVal = isRunning ? "flow-dash" : "flow-stopped";
+            if (pipeOut) pipeOut.className.baseVal = isRunning ? "flow-dash" : "flow-stopped";
+
+            // Chamber Tint
+            let chamber = document.getElementById('thermal-chamber');
+            if (chamber) {
+                if (tempNum > 85) {
+                    chamber.setAttribute('fill', '#fee2e2');
+                    chamber.setAttribute('stroke', '#ef4444');
+                } else if (tempNum > 70) {
+                    chamber.setAttribute('fill', '#fef3c7');
+                    chamber.setAttribute('stroke', '#f59e0b');
+                } else {
+                    chamber.setAttribute('fill', '#e0f2fe');
+                    chamber.setAttribute('stroke', '#38bdf8');
+                }
+            }
+
+            // 3. Update Time-Series Charts
+            let timeNow = new Date().toLocaleTimeString();
+            if (tempChart.data.labels.length >= currentMaxPoints) {
+                tempChart.data.labels.shift();
+                tempChart.data.datasets[0].data.shift();
+                pressureChart.data.labels.shift();
+                pressureChart.data.datasets[0].data.shift();
+            }
+            tempChart.data.labels.push(timeNow);
+            tempChart.data.datasets[0].data.push(tempNum);
+            pressureChart.data.labels.push(timeNow);
+            pressureChart.data.datasets[0].data.push(pressNum);
+            tempChart.update();
             pressureChart.update();
         }
 
-        async function fetchLatestData() {
-            if (isUserDisconnected) {
-                forceClearUI();
-                return;
-            }
+        function updatePlcStatusUI(statusData) {
+            let badge = document.getElementById('connection-status');
+            let leftBadge = document.getElementById('left-conn-status');
 
-            try {
-                let statusRes = await fetch('http://localhost:5000/api/Sensor/connection-status');
-                if (!statusRes.ok) return;
+            if (!statusData) return;
 
-                let statusData = await statusRes.json();
-                let isConnected = statusData.isConnected;
-
-                if (!isConnected || isUserDisconnected) {
-                    forceClearUI();
-                    return;
+            if (statusData.state === "Connected") {
+                if (badge) {
+                    badge.className = "badge bg-success p-2";
+                    badge.innerHTML = '<i class="fa-solid fa-circle-dot me-1"></i> PLC Bağlı';
                 }
-
-                let badge = document.getElementById('connection-status');
-                let leftBadge = document.getElementById('left-conn-status');
-                badge.className = "badge bg-success p-2";
-                badge.innerHTML = '<i class="fa-solid fa-circle-dot me-1"></i> PLC Bağlı';
-                leftBadge.className = "badge bg-success w-100 p-2 text-start";
-                leftBadge.innerHTML = '<i class="fa-solid fa-circle-check me-1"></i> Bağlantı Aktif';
+                if (leftBadge) {
+                    leftBadge.className = "badge bg-success w-100 p-2 text-start";
+                    leftBadge.innerHTML = '<i class="fa-solid fa-circle-dot me-1"></i> PLC Bağlı';
+                }
                 hideAlert();
-
-                let response = await fetch('http://localhost:5000/api/Sensor/latest');
-                if (response.ok) {
-                    let data = await response.json();
-                    if (!data || data.temperature === undefined) return;
-
-                    document.getElementById('temp-val').innerText = data.temperature + " °C";
-                    document.getElementById('pressure-val').innerText = data.pressure + " bar";
-
-                    let statusEl = document.getElementById('status-val');
-                    statusEl.innerText = data.machineStatus ? "ÇALIŞIYOR" : "DURDU";
-                    statusEl.className = data.machineStatus ? "metric-value text-success" : "metric-value text-danger";
-
-                    let timeNow = new Date().toLocaleTimeString();
-                    if (tempChart.data.labels.length > 20) {
-                        tempChart.data.labels.shift();
-                        tempChart.data.datasets[0].data.shift();
-                        pressureChart.data.labels.shift();
-                        pressureChart.data.datasets[0].data.shift();
-                    }
-                    tempChart.data.labels.push(timeNow);
-                    tempChart.data.datasets[0].data.push(data.temperature);
-                    pressureChart.data.labels.push(timeNow);
-                    pressureChart.data.datasets[0].data.push(data.pressure);
-
-                    tempChart.update();
-                    pressureChart.update();
+            } else if (statusData.state === "Reconnecting") {
+                forceClearUI();
+                if (badge) {
+                    badge.className = "badge bg-warning text-dark p-2";
+                    badge.innerHTML = '<i class="fa-solid fa-arrows-rotate fa-spin me-1"></i> Yeniden Bağlanıyor...';
                 }
-            } catch (error) {
-                console.error("Sunucu iletişim hatası:", error);
+                if (leftBadge) {
+                    leftBadge.className = "badge bg-warning text-dark w-100 p-2 text-start";
+                    leftBadge.innerHTML = '<i class="fa-solid fa-arrows-rotate fa-spin me-1"></i> Yeniden Bağlanıyor...';
+                }
+                showAlert("PLC bağlantısı koptu! Sistem otomatik olarak yeniden bağlanmaya çalışıyor (Auto-Reconnect)...");
+            } else if (statusData.state === "Connecting") {
+                if (badge) {
+                    badge.className = "badge bg-info text-dark p-2";
+                    badge.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i> Bağlanıyor...';
+                }
+                if (leftBadge) {
+                    leftBadge.className = "badge bg-info text-dark w-100 p-2 text-start";
+                    leftBadge.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i> Bağlanıyor...';
+                }
+            } else {
+                forceClearUI();
+                if (badge) {
+                    badge.className = "badge bg-danger p-2";
+                    badge.innerHTML = '<i class="fa-solid fa-triangle-exclamation me-1"></i> PLC Bağlı Değil';
+                }
+                if (leftBadge) {
+                    leftBadge.className = "badge bg-danger w-100 p-2 text-start";
+                    leftBadge.innerHTML = '<i class="fa-solid fa-triangle-exclamation me-1"></i> Bağlantı Yok';
+                }
             }
         }
 
-        setInterval(fetchLatestData, 2000);
-        fetchLatestData();
+        function renderActiveAlarms(alarms) {
+            const listEl = document.getElementById('active-alarms-list');
+            const badgeEl = document.getElementById('alarm-count-badge');
+            if (!listEl || !badgeEl) return;
+
+            if (!alarms || alarms.length === 0) {
+                badgeEl.className = "badge bg-success";
+                badgeEl.innerText = "0 Aktif Alarm";
+                listEl.innerHTML = `
+                    <div class="text-muted small py-2">
+                        <i class="fa-solid fa-circle-check text-success me-1"></i> Tüm sistem parametreleri normal aralıkta. Aktif alarm bulunmuyor.
+                    </div>
+                `;
+                return;
+            }
+
+            const hasCritical = alarms.some(a => a.severity === 'Critical' || a.severity === 3);
+            badgeEl.className = hasCritical ? "badge bg-danger" : "badge bg-warning text-dark";
+            badgeEl.innerText = `${alarms.length} Aktif Alarm`;
+
+            let html = '<div class="row g-2">';
+            alarms.forEach(alarm => {
+                const isCritical = alarm.severity === 'Critical' || alarm.severity === 3;
+                const cardClass = isCritical ? 'alarm-critical-pulse' : 'alarm-warning-border';
+                const badgeColor = isCritical ? 'bg-danger' : 'bg-warning text-dark';
+                const sevName = isCritical ? 'KRİTİK' : 'UYARI';
+                const timeStr = new Date(alarm.createdAt).toLocaleTimeString();
+
+                html += `
+                    <div class="col-md-6 col-12">
+                        <div class="card card-custom p-3 ${cardClass}">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <span class="badge ${badgeColor} me-2">${sevName}</span>
+                                    <strong class="text-dark">${alarm.alarmType}</strong>
+                                    <p class="mb-1 mt-1 small text-dark">${alarm.message}</p>
+                                    <span class="text-muted" style="font-size: 0.75rem;"><i class="fa-regular fa-clock me-1"></i>${timeStr}</span>
+                                </div>
+                                ${alarm.status !== 'Acknowledged' && alarm.status !== 3 && alarm.id > 0 ? `
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="acknowledgeAlarm(${alarm.id})" title="Alarmı Onayla">
+                                        <i class="fa-solid fa-check me-1"></i>Onayla
+                                    </button>
+                                ` : '<span class="badge bg-info text-dark">Onaylandı</span>'}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            listEl.innerHTML = html;
+        }
+
+        async function acknowledgeAlarm(id) {
+            try {
+                let res = await fetch(`http://localhost:5000/api/alarms/${id}/acknowledge`, { method: 'POST' });
+                if (res.ok) {
+                    fetchActiveAlarms();
+                }
+            } catch (err) {
+                console.error("Alarm onaylanamadı:", err);
+            }
+        }
+
+        async function fetchActiveAlarms() {
+            try {
+                let res = await fetch('http://localhost:5000/api/alarms/active');
+                if (res.ok) {
+                    let alarms = await res.json();
+                    renderActiveAlarms(alarms);
+                }
+            } catch (err) {
+                console.warn("Aktif alarmlar çekilemedi:", err);
+            }
+        }
+
+        async function fetchDigitalTwinState() {
+            try {
+                let res = await fetch('http://localhost:5000/api/digitaltwin/state');
+                if (res.ok) {
+                    let state = await res.json();
+
+                    if (state.temperatureMin !== null) document.getElementById('kpi-temp-min').innerText = state.temperatureMin + "°C";
+                    if (state.temperatureAvg !== null) document.getElementById('kpi-temp-avg').innerText = state.temperatureAvg + "°C";
+                    if (state.temperatureMax !== null) document.getElementById('kpi-temp-max').innerText = state.temperatureMax + "°C";
+
+                    if (state.pressureMin !== null) document.getElementById('kpi-press-min').innerText = state.pressureMin + "b";
+                    if (state.pressureAvg !== null) document.getElementById('kpi-press-avg').innerText = state.pressureAvg + "b";
+                    if (state.pressureMax !== null) document.getElementById('kpi-press-max').innerText = state.pressureMax + "b";
+
+                    document.getElementById('kpi-running-ratio').innerText = state.machineRunningRatio + "%";
+                    document.getElementById('kpi-total-logs').innerText = state.totalLogCount.toLocaleString();
+
+                    updateDigitalTwinVisuals(state);
+                    updatePlcStatusUI({ state: state.plcConnectionState, isConnected: state.isPlcConnected });
+                    if (state.activeAlarms) renderActiveAlarms(state.activeAlarms);
+                }
+            } catch (err) {
+                console.warn("Digital Twin durumu alınamadı:", err);
+            }
+        }
+
+        // SignalR Connection
+        const hubConnection = new signalR.HubConnectionBuilder()
+            .withUrl("http://localhost:5000/sensorHub")
+            .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
+            .configureLogging(signalR.LogLevel.Warning)
+            .build();
+
+        hubConnection.on("ReceiveSensorData", function (data) {
+            updateDigitalTwinVisuals(data);
+        });
+
+        hubConnection.on("ReceivePlcStatus", function (status) {
+            updatePlcStatusUI(status);
+        });
+
+        hubConnection.on("ReceiveActiveAlarms", function (alarms) {
+            renderActiveAlarms(alarms);
+        });
+
+        hubConnection.onreconnecting((error) => {
+            console.warn("SignalR bağlantısı koptu, yeniden bağlanılıyor...", error);
+            let badge = document.getElementById('connection-status');
+            if (badge) {
+                badge.className = "badge bg-warning text-dark p-2";
+                badge.innerHTML = '<i class="fa-solid fa-arrows-rotate fa-spin me-1"></i> Canlı Yayın Bekleniyor...';
+            }
+        });
+
+        hubConnection.onreconnected((connectionId) => {
+            console.log("SignalR bağlantısı yeniden kuruldu. ID:", connectionId);
+            fetchDigitalTwinState();
+        });
+
+        hubConnection.onclose((error) => {
+            console.error("SignalR bağlantısı kapandı:", error);
+            setTimeout(startSignalR, 5000);
+        });
+
+        async function startSignalR() {
+            try {
+                await hubConnection.start();
+                console.log("SignalR Real-Time Bağlantısı Kuruldu (WebSocket).");
+                fetchDigitalTwinState();
+            } catch (err) {
+                console.warn("SignalR Bağlantısı ilk denemede kurulamadı, 3 sn sonra tekrar denenecek...", err);
+                setTimeout(startSignalR, 3000);
+            }
+        }
+
+        // Initial Startup
+        startSignalR();
+        fetchDigitalTwinState();
+        setChartRange(20);
     </script>
 </body>
 </html>

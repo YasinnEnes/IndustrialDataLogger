@@ -1,6 +1,7 @@
-﻿using System;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
+using IndustrialDataLogger.Enums;
 using IndustrialDataLogger.Models;
 using Microsoft.Extensions.Logging;
 
@@ -8,109 +9,67 @@ namespace IndustrialDataLogger.Services
 {
     public class HybridPlcService : IPlcService
     {
-        private readonly MockPlcService _mockService;
-        private readonly PlcService _realService;
+        private readonly IPlcConnectionManager _connectionManager;
         private readonly ILogger<HybridPlcService> _logger;
 
-        public static bool IsSimulationMode { get; set; } = true;
-
-        public HybridPlcService(MockPlcService mockService, PlcService realService, ILogger<HybridPlcService> logger)
+        public static bool IsSimulationMode
         {
-            _mockService = mockService;
-            _realService = realService;
+            get => PlcConnectionManager.IsSimulationMode;
+            set => PlcConnectionManager.IsSimulationMode = value;
+        }
+
+        public bool IsConnected => _connectionManager.IsConnected;
+
+        public HybridPlcService(IPlcConnectionManager connectionManager, ILogger<HybridPlcService> logger)
+        {
+            _connectionManager = connectionManager;
             _logger = logger;
         }
 
-        public bool IsConnected => IsSimulationMode ? _mockService.IsConnected : _realService.IsConnected;
-
-        // Tek ve Merkezi Okuma Metodu (Bağlantı Kontrolü Dahil)
-        public async Task<SensorData> ReadSensorDataAsync(CancellationToken cancellationToken = default)
+        public async Task<SensorData?> ReadSensorDataAsync(CancellationToken cancellationToken = default)
         {
-            // BAĞLANTI KONTROLÜ: Bağlı değilse kesinlikle veri üretilmez (Kaynakta engelleme)
-            if (!IsConnected)
-            {
-                _logger.LogWarning("PLC bağlı değil, veri akışı durduruldu.");
-                return null;
-            }
-
-            return IsSimulationMode ? await _mockService.ReadSensorDataAsync(cancellationToken)
-                                    : await _realService.ReadSensorDataAsync(cancellationToken);
+            return await _connectionManager.ReadDataAsync(cancellationToken);
         }
 
-        public SensorData ReadSensorData()
+        public SensorData? ReadSensorData()
         {
-            if (!IsConnected) return null;
-            return IsSimulationMode ? new SensorData() : null;
+            return _connectionManager.ReadDataAsync(default).GetAwaiter().GetResult();
+        }
+
+        public async Task<bool> WriteDataAsync(PlcWriteRequest request, CancellationToken cancellationToken = default)
+        {
+            return await _connectionManager.WriteDataAsync(request, cancellationToken);
+        }
+
+        public async Task<bool> WriteDataAsync(string variableName, object value, CancellationToken cancellationToken = default)
+        {
+            var request = new PlcWriteRequest { VariableName = variableName, Value = value };
+            return await WriteDataAsync(request, cancellationToken);
         }
 
         public void Connect()
         {
-            if (IsSimulationMode) _mockService.Connect();
-            else _realService.Connect();
+            _connectionManager.ConnectAsync(default).GetAwaiter().GetResult();
         }
 
-        public Task<bool> ConnectAsync(CancellationToken cancellationToken = default)
-            => IsSimulationMode ? _mockService.ConnectAsync(cancellationToken) : _realService.ConnectAsync(cancellationToken);
+        public async Task<bool> ConnectAsync(CancellationToken cancellationToken = default)
+        {
+            return await _connectionManager.ConnectAsync(cancellationToken);
+        }
 
         public void Disconnect()
         {
-            if (IsSimulationMode)
-                _mockService.Disconnect();
-            else
-                _realService.Disconnect();
+            _connectionManager.DisconnectAsync().GetAwaiter().GetResult();
         }
 
-        public Task DisconnectAsync(CancellationToken cancellationToken = default)
+        public async Task DisconnectAsync()
         {
-            if (IsSimulationMode)
-            {
-                _mockService.Disconnect();
-            }
-            else
-            {
-                _realService.Disconnect();
-            }
-            return Task.CompletedTask;
+            await _connectionManager.DisconnectAsync();
         }
 
-        public Task WriteDataAsync(string variableName, object value)
+        public async Task DisconnectAsync(CancellationToken cancellationToken)
         {
-            if (!IsConnected) throw new InvalidOperationException("PLC bağlı değil.");
-
-            if (IsSimulationMode)
-            {
-                return _mockService.WriteDataAsync(variableName, value);
-            }
-            else
-            {
-                return _realService.WriteDataAsync(variableName, value);
-            }
-        }
-
-        public Task WriteDataAsync(PlcWriteRequest request, CancellationToken cancellationToken = default)
-        {
-            if (!IsConnected) throw new InvalidOperationException("PLC bağlı değil.");
-
-            if (IsSimulationMode)
-            {
-                return _mockService.WriteDataAsync(request, cancellationToken);
-            }
-            else
-            {
-                return _realService.WriteDataAsync(request.VariableName, request.Value);
-            }
-        }
-
-        async Task<bool> IPlcService.WriteDataAsync(PlcWriteRequest request, CancellationToken cancellationToken)
-        {
-            if (!IsConnected) return false;
-            await WriteDataAsync(request, cancellationToken);
-            return true;
-        }
-
-        public Task DisconnectAsync()
-        {
-            throw new NotImplementedException();
+            await _connectionManager.DisconnectAsync();
         }
     }
 }

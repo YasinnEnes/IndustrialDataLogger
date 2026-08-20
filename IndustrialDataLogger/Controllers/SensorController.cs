@@ -1,13 +1,16 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using IndustrialDataLogger.Data;
 using IndustrialDataLogger.Models;
+using IndustrialDataLogger.Models.Entities;
 using IndustrialDataLogger.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Configuration;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Npgsql;
 
 namespace IndustrialDataLogger.Controllers
 {
@@ -16,23 +19,31 @@ namespace IndustrialDataLogger.Controllers
     public class SensorController : ControllerBase
     {
         private readonly IPlcService _plcService;
-        private readonly string _connectionString;
+        private readonly IPlcConnectionManager _plcConnectionManager;
+        private readonly IndustrialDbContext _dbContext;
         private readonly ILogger<SensorController> _logger;
 
-        public SensorController(IPlcService plcService, IConfiguration configuration, ILogger<SensorController> logger)
+        public SensorController(
+            IPlcService plcService,
+            IPlcConnectionManager plcConnectionManager,
+            IndustrialDbContext dbContext,
+            ILogger<SensorController> logger)
         {
             _plcService = plcService;
-            _connectionString = configuration.GetConnectionString("PostgreSql") ?? string.Empty;
+            _plcConnectionManager = plcConnectionManager;
+            _dbContext = dbContext;
             _logger = logger;
         }
 
-        // 1. En son veriyi doğrudan PLC'den anlık okur
         [HttpGet("latest")]
         public async Task<IActionResult> GetLatestData(CancellationToken cancellationToken)
         {
-            var data = await _plcService.ReadSensorDataAsync(cancellationToken);
+            if (!_plcConnectionManager.IsConnected)
+            {
+                return StatusCode(503, new { message = "PLC bağlantısı kurulmadığı için veri alınamıyor." });
+            }
 
-            // Eğer servis null dönerse (bağlantı yoksa), 404 veya 503 dön
+            var data = await _plcService.ReadSensorDataAsync(cancellationToken);
             if (data == null)
             {
                 return StatusCode(503, new { message = "PLC bağlantısı yok, veri alınamıyor." });
@@ -40,47 +51,136 @@ namespace IndustrialDataLogger.Controllers
             return Ok(data);
         }
 
-        // 2. PostgreSQL'den son N adet geçmiş kaydı getirir
+        // Sprint 2.4 & 2.5: Optimize Edilmiş Historical Data API (Tarih filtreleme, Sayfalama, AsNoTracking)
         [HttpGet("history")]
-        public async Task<IActionResult> GetHistory([FromQuery] int limit = 50, CancellationToken cancellationToken = default)
+        public async Task<IActionResult> GetHistory(
+            [FromQuery] DateTime? startDate,
+            [FromQuery] DateTime? endDate,
+            [FromQuery] int limit = 50,
+            [FromQuery] int skip = 0,
+            [FromQuery] bool? machineStatus = null,
+            CancellationToken cancellationToken = default)
         {
-            var result = new List<SensorData>();
-
             try
             {
-                using var conn = new NpgsqlConnection(_connectionString);
-                await conn.OpenAsync(cancellationToken);
+                var query = _dbContext.SensorDataLogs.AsNoTracking();
 
-                var sql = "SELECT timestamp, temperature, pressure, machinestatus FROM sensordata ORDER BY timestamp DESC LIMIT @limit";
-                using var cmd = new NpgsqlCommand(sql, conn);
-                cmd.Parameters.AddWithValue("limit", limit);
-
-                using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-                while (await reader.ReadAsync(cancellationToken))
+                if (startDate.HasValue)
                 {
-                    result.Add(new SensorData
-                    {
-                        Timestamp = reader.GetDateTime(0),
-                        Temperature = Math.Round(reader.GetDouble(1), 2),
-                        Pressure = Math.Round(reader.GetDouble(2), 2),
-                        MachineStatus = reader.GetBoolean(3)
-                    });
+                    var startUtc = DateTime.SpecifyKind(startDate.Value, DateTimeKind.Utc);
+                    query = query.Where(x => x.Timestamp >= startUtc);
                 }
 
-                return Ok(result);
+                if (endDate.HasValue)
+                {
+                    var endUtc = DateTime.SpecifyKind(endDate.Value, DateTimeKind.Utc);
+                    query = query.Where(x => x.Timestamp <= endUtc);
+                }
+
+                if (machineStatus.HasValue)
+                {
+                    query = query.Where(x => x.MachineStatus == machineStatus.Value);
+                }
+
+                int safeLimit = Math.Clamp(limit, 1, 500);
+                int safeSkip = Math.Max(0, skip);
+
+                var data = await query
+                    .OrderByDescending(x => x.Timestamp)
+                    .Skip(safeSkip)
+                    .Take(safeLimit)
+                    .Select(x => new
+                    {
+                        x.Id,
+                        x.Timestamp,
+                        Temperature = Math.Round(x.Temperature, 2),
+                        Pressure = Math.Round(x.Pressure, 2),
+                        x.MachineStatus,
+                        x.ErrorCode
+                    })
+                    .ToListAsync(cancellationToken);
+
+                return Ok(data);
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Geçmiş veri okuma hatası: {ex.Message}");
-                return StatusCode(500, new { message = "Veritabanı okuma hatası." });
+                _logger.LogError("Geçmiş veri okuma hatası: {Message}", ex.Message);
+                return StatusCode(500, new { message = "Veritabanı okuma hatası: " + ex.Message });
             }
         }
 
-        // 3. PLC'ye değişken/komut yazar
+        // Sprint 2.4: İstatistik & Özet Veri Endpoint'i
+        [HttpGet("history/stats")]
+        public async Task<IActionResult> GetHistoryStats(
+            [FromQuery] DateTime? startDate,
+            [FromQuery] DateTime? endDate,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var query = _dbContext.SensorDataLogs.AsNoTracking();
+
+                if (startDate.HasValue)
+                {
+                    var startUtc = DateTime.SpecifyKind(startDate.Value, DateTimeKind.Utc);
+                    query = query.Where(x => x.Timestamp >= startUtc);
+                }
+
+                if (endDate.HasValue)
+                {
+                    var endUtc = DateTime.SpecifyKind(endDate.Value, DateTimeKind.Utc);
+                    query = query.Where(x => x.Timestamp <= endUtc);
+                }
+
+                var count = await query.CountAsync(cancellationToken);
+                if (count == 0)
+                {
+                    return Ok(new
+                    {
+                        totalRecords = 0,
+                        message = "Belirtilen aralıkta veri bulunamadı."
+                    });
+                }
+
+                var minTemp = await query.MinAsync(x => x.Temperature, cancellationToken);
+                var maxTemp = await query.MaxAsync(x => x.Temperature, cancellationToken);
+                var avgTemp = await query.AverageAsync(x => x.Temperature, cancellationToken);
+
+                var minPress = await query.MinAsync(x => x.Pressure, cancellationToken);
+                var maxPress = await query.MaxAsync(x => x.Pressure, cancellationToken);
+                var avgPress = await query.AverageAsync(x => x.Pressure, cancellationToken);
+
+                var runningCount = await query.CountAsync(x => x.MachineStatus, cancellationToken);
+
+                return Ok(new
+                {
+                    totalRecords = count,
+                    temperature = new
+                    {
+                        min = Math.Round(minTemp, 2),
+                        max = Math.Round(maxTemp, 2),
+                        avg = Math.Round(avgTemp, 2)
+                    },
+                    pressure = new
+                    {
+                        min = Math.Round(minPress, 2),
+                        max = Math.Round(maxPress, 2),
+                        avg = Math.Round(avgPress, 2)
+                    },
+                    machineRunningRatio = Math.Round((double)runningCount / count * 100, 2)
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError("İstatistik hesaplama hatası: {Message}", ex.Message);
+                return StatusCode(500, new { message = "İstatistik hesaplama hatası: " + ex.Message });
+            }
+        }
+
         [HttpPost("write")]
         public async Task<IActionResult> WritePlcData([FromBody] PlcWriteRequest request, CancellationToken cancellationToken)
         {
-            if (!_plcService.IsConnected)
+            if (!_plcConnectionManager.IsConnected)
             {
                 return StatusCode(503, new { message = "PLC bağlantısı yok." });
             }
@@ -90,11 +190,9 @@ namespace IndustrialDataLogger.Controllers
             {
                 return Ok(new { message = $"'{request.VariableName}' adresine değer başarıyla yazıldı.", value = request.Value });
             }
-
             return BadRequest(new { message = "PLC yazma işlemi başarısız oldu." });
         }
 
-        // 4. Mod Yönetimi (Simülasyon / Gerçek PLC)
         [HttpGet("mode")]
         public IActionResult GetMode()
         {
@@ -102,10 +200,10 @@ namespace IndustrialDataLogger.Controllers
         }
 
         [HttpPost("mode")]
-        public IActionResult SetMode([FromBody] ModeModel model)
+        public async Task<IActionResult> SetMode([FromBody] ModeModel model, CancellationToken cancellationToken)
         {
-            HybridPlcService.IsSimulationMode = model.IsSimulation;
-            return Ok(new { success = true, isSimulation = HybridPlcService.IsSimulationMode });
+            await _plcConnectionManager.SetModeAsync(model.IsSimulation, cancellationToken);
+            return Ok(new { success = true, isSimulation = PlcConnectionManager.IsSimulationMode, isConnected = _plcConnectionManager.IsConnected });
         }
 
         public class ModeModel
@@ -113,11 +211,10 @@ namespace IndustrialDataLogger.Controllers
             public bool IsSimulation { get; set; }
         }
 
-        // 5. PLC Bağlantı Durumu ve Yönetim Uç Noktaları
         [HttpGet("connection-status")]
         public IActionResult GetConnectionStatus()
         {
-            return Ok(new { isConnected = _plcService.IsConnected });
+            return Ok(new { isConnected = _plcConnectionManager.IsConnected, state = _plcConnectionManager.CurrentState.ToString() });
         }
 
         [HttpPost("connect")]
@@ -125,27 +222,55 @@ namespace IndustrialDataLogger.Controllers
         {
             try
             {
-                await _plcService.ConnectAsync(cancellationToken);
-                return Ok(new { success = true, message = "PLC bağlantısı başarıyla kuruldu." });
+                if (PlcConnectionManager.SimulateConnectionError)
+                {
+                    return BadRequest(new { success = false, message = "Bağlantı Kurulamadı: Ağ kablosu takılı değil veya TIA Portal projesindeki DB yapıları uyuşmuyor!" });
+                }
+
+                var success = await _plcConnectionManager.ConnectAsync(cancellationToken);
+                if (success)
+                {
+                    string modeText = HybridPlcService.IsSimulationMode ? "Simülasyon Bağlantısı" : "Gerçek PLC Bağlantısı";
+                    return Ok(new { success = true, message = $"{modeText} başarıyla kuruldu." });
+                }
+
+                return BadRequest(new { success = false, message = "PLC bağlantısı kurulamadı!" });
             }
             catch (Exception ex)
             {
-                return BadRequest(new { success = false, error = ex.Message });
+                return BadRequest(new { success = false, message = ex.Message });
             }
         }
 
         [HttpPost("disconnect")]
-        public IActionResult DisconnectPlc() // Hiçbir parametre ve async/await yok
+        public async Task<IActionResult> DisconnectPlc()
         {
             try
             {
-                _plcService.Disconnect(); // Senkron çağırıyoruz (daha garanti)
-                return Ok(new { success = true, message = "PLC bağlantısı kesildi." });
+                await _plcConnectionManager.DisconnectAsync();
+                return Ok(new { success = true, message = "PLC bağlantısı tamamen kesildi." });
             }
             catch (Exception ex)
             {
-                return BadRequest(new { success = false, error = ex.Message });
+                return BadRequest(new { success = false, message = ex.Message });
             }
+        }
+
+        [HttpPost("send-command")]
+        public async Task<IActionResult> SendCommand([FromBody] CommandModel model, CancellationToken cancellationToken)
+        {
+            if (!_plcConnectionManager.IsConnected)
+            {
+                return StatusCode(503, new { message = "PLC bağlantısı yok, komut iletilemez." });
+            }
+
+            var request = new PlcWriteRequest
+            {
+                VariableName = "DB1.DBD10",
+                Value = model.Setpoint
+            };
+            await _plcService.WriteDataAsync(request, cancellationToken);
+            return Ok(new { success = true, message = $"Komut iletildi. Setpoint ({model.Setpoint}) başarıyla gönderildi.", setpoint = model.Setpoint });
         }
     }
 }
