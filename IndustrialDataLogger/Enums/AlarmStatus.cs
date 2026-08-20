@@ -2,8 +2,9 @@ namespace IndustrialDataLogger.Enums
 {
     public enum AlarmStatus
     {
+        Triggered = 0,
         Active = 1,
-        Resolved = 2,
-        Acknowledged = 3
+        Acknowledged = 2,
+        Resolved = 3
     }
 }

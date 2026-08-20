@@ -11,6 +11,7 @@ namespace IndustrialDataLogger.Data
 
         public DbSet<SensorDataLog> SensorDataLogs { get; set; } = null!;
         public DbSet<AlarmLog> Alarms { get; set; } = null!;
+        public DbSet<SystemEventLog> SystemEvents { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -57,6 +58,24 @@ namespace IndustrialDataLogger.Data
                 entity.Property(e => e.CreatedAt).HasColumnName("createdat").IsRequired();
                 entity.Property(e => e.ResolvedAt).HasColumnName("resolvedat");
                 entity.Property(e => e.AcknowledgedAt).HasColumnName("acknowledgedat");
+            });
+
+            // GÜN 3: SystemEventLog tablosu ve indeksleri
+            modelBuilder.Entity<SystemEventLog>(entity =>
+            {
+                entity.ToTable("systemeventlogs");
+
+                entity.HasKey(e => e.Id);
+
+                entity.HasIndex(e => e.Timestamp)
+                      .HasDatabaseName("IX_systemeventlogs_timestamp");
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.EventType).HasColumnName("eventtype").IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Severity).HasColumnName("severity").IsRequired();
+                entity.Property(e => e.Description).HasColumnName("description").IsRequired().HasMaxLength(500);
+                entity.Property(e => e.Source).HasColumnName("source").HasMaxLength(100);
+                entity.Property(e => e.Timestamp).HasColumnName("timestamp").IsRequired();
             });
         }
     }

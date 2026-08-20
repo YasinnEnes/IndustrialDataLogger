@@ -331,17 +331,39 @@
                 </div>
             </div>
 
-            <!-- Alarms Panel -->
-            <div class="card card-custom p-3 mb-3" id="alarm-panel-card">
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <h6 class="mb-0 text-dark fw-bold">
-                        <i class="fa-solid fa-triangle-exclamation text-warning me-2"></i>Aktif Alarmlar & Teşhis Paneli
-                    </h6>
-                    <span class="badge bg-success" id="alarm-count-badge" style="font-size: 0.75rem;">0 Aktif Alarm</span>
+            <!-- Alarms & Event Timeline Row (GÜN 3: Karar Destek & Olay Günlüğü) -->
+            <div class="row g-3 mb-3">
+                <div class="col-lg-6">
+                    <!-- Alarms Panel -->
+                    <div class="card card-custom p-3 h-100" id="alarm-panel-card">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <h6 class="mb-0 text-dark fw-bold">
+                                <i class="fa-solid fa-triangle-exclamation text-warning me-2"></i>Aktif Alarmlar & Teşhis
+                            </h6>
+                            <span class="badge bg-success" id="alarm-count-badge" style="font-size: 0.75rem;">0 Aktif Alarm</span>
+                        </div>
+                        <div id="active-alarms-list" class="mt-2" style="max-height: 240px; overflow-y: auto;">
+                            <div class="text-muted small py-1" style="font-size: 0.8rem;">
+                                <i class="fa-solid fa-circle-check text-success me-1"></i> Tüm sistem parametreleri normal aralıkta. Aktif alarm bulunmuyor.
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div id="active-alarms-list" class="mt-2">
-                    <div class="text-muted small py-1" style="font-size: 0.8rem;">
-                        <i class="fa-solid fa-circle-check text-success me-1"></i> Tüm sistem parametreleri normal aralıkta. Aktif alarm bulunmuyor.
+
+                <div class="col-lg-6">
+                    <!-- Event Timeline Panel -->
+                    <div class="card card-custom p-3 h-100" id="event-timeline-card">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <h6 class="mb-0 text-dark fw-bold">
+                                <i class="fa-solid fa-clock-rotate-left text-primary me-2"></i>Olay Akışı (Event Timeline)
+                            </h6>
+                            <span class="badge bg-primary" id="event-count-badge" style="font-size: 0.75rem;">Canlı Olaylar</span>
+                        </div>
+                        <div id="event-timeline-list" class="mt-2" style="max-height: 240px; overflow-y: auto; font-size: 0.8rem;">
+                            <div class="text-muted small py-1">
+                                <i class="fa-solid fa-spinner fa-spin me-1"></i> Olaylar yükleniyor...
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -908,10 +930,92 @@
             } catch (e) { console.error("Senaryo değiştirilemedi"); }
         }
 
+        // GÜN 3 (Sprint 3.4 & 3.5): Olay Zaman Çizelgesi (Event Timeline) Yönetimi
+        async function fetchRecentEvents() {
+            try {
+                let res = await fetch('http://localhost:5000/api/events/recent?limit=30');
+                if (res.ok) {
+                    let events = await res.json();
+                    renderEventTimeline(events);
+                }
+            } catch (err) {
+                console.warn("Sistem olayları alınamadı:", err);
+            }
+        }
+
+        function renderEventTimeline(events) {
+            let container = document.getElementById('event-timeline-list');
+            if (!container) return;
+
+            if (!events || events.length === 0) {
+                container.innerHTML = `
+                    <div class="text-muted small py-2">
+                        <i class="fa-solid fa-info-circle me-1"></i> Henüz kaydedilmiş bir sistem olayı bulunmuyor.
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '<div class="list-group list-group-flush">';
+            events.forEach(ev => {
+                let timeStr = new Date(ev.timestamp).toLocaleTimeString();
+                let sev = ev.severity;
+                let sevClass = sev === 'Critical' || sev === 3 ? 'text-danger' : (sev === 'Warning' || sev === 2 ? 'text-warning' : 'text-primary');
+                let iconClass = sev === 'Critical' || sev === 3 ? 'fa-triangle-exclamation' : (sev === 'Warning' || sev === 2 ? 'fa-circle-exclamation' : 'fa-bell');
+
+                html += `
+                    <div class="list-group-item px-2 py-1 border-0 border-bottom d-flex justify-content-between align-items-center" style="background: transparent;">
+                        <div>
+                            <i class="fa-solid ${iconClass} ${sevClass} me-2"></i>
+                            <strong class="text-dark">${ev.eventType}</strong>
+                            <span class="text-muted ms-1 small">${ev.description}</span>
+                        </div>
+                        <span class="badge bg-light text-secondary border" style="font-size: 0.70rem;">${timeStr}</span>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        function prependEventToTimeline(ev) {
+            let container = document.getElementById('event-timeline-list');
+            if (!container) return;
+
+            let timeStr = new Date(ev.timestamp).toLocaleTimeString();
+            let sev = ev.severity;
+            let sevClass = sev === 'Critical' || sev === 3 ? 'text-danger' : (sev === 'Warning' || sev === 2 ? 'text-warning' : 'text-primary');
+            let iconClass = sev === 'Critical' || sev === 3 ? 'fa-triangle-exclamation' : (sev === 'Warning' || sev === 2 ? 'fa-circle-exclamation' : 'fa-bell');
+
+            let itemHtml = `
+                <div class="list-group-item px-2 py-1 border-0 border-bottom d-flex justify-content-between align-items-center bg-light bg-opacity-50" style="animation: fadeIn 0.4s ease;">
+                    <div>
+                        <i class="fa-solid ${iconClass} ${sevClass} me-2"></i>
+                        <strong class="text-dark">${ev.eventType}</strong>
+                        <span class="text-muted ms-1 small">${ev.description}</span>
+                    </div>
+                    <span class="badge bg-light text-secondary border" style="font-size: 0.70rem;">${timeStr}</span>
+                </div>
+            `;
+
+            let listGroup = container.querySelector('.list-group');
+            if (listGroup) {
+                listGroup.insertAdjacentHTML('afterbegin', itemHtml);
+            } else {
+                container.innerHTML = `<div class="list-group list-group-flush">${itemHtml}</div>`;
+            }
+        }
+
+        // GÜN 3 (Sprint 3.4): SignalR Canlı Olay Dinleyicisi
+        hubConnection.on("ReceiveSystemEvent", function (ev) {
+            prependEventToTimeline(ev);
+        });
+
         // Initial Startup
         startSignalR();
         fetchDigitalTwinState();
         fetchScenario();
+        fetchRecentEvents();
         setChartRange(20);
     </script>
 </body>

@@ -50,6 +50,9 @@ builder.Services.AddSingleton<IPlcConnectionManager, PlcConnectionManager>();
 // IPlcService sözleşmesi için HybridPlcService eşlemesi (simülasyon ve gerçek PLC yönetimi)
 builder.Services.AddSingleton<IPlcService, HybridPlcService>();
 
+// GÜN 3 - Sistem Olay Günlüğü Servis Kaydı
+builder.Services.AddSingleton<IEventLogService, EventLogService>();
+
 // GÜN 4 - Alarm Motoru Servis Kaydı
 builder.Services.AddSingleton<IAlarmService, AlarmService>();
 
@@ -96,6 +99,16 @@ using (var scope = app.Services.CreateScope())
             );
             CREATE INDEX IF NOT EXISTS ""IX_alarmlogs_createdat"" ON alarmlogs (createdat DESC);
             CREATE INDEX IF NOT EXISTS ""IX_alarmlogs_status"" ON alarmlogs (status);
+
+            CREATE TABLE IF NOT EXISTS systemeventlogs (
+                id BIGSERIAL PRIMARY KEY,
+                eventtype VARCHAR(100) NOT NULL,
+                severity INT NOT NULL,
+                description VARCHAR(500) NOT NULL,
+                source VARCHAR(100) DEFAULT 'System',
+                timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS ""IX_systemeventlogs_timestamp"" ON systemeventlogs (timestamp DESC);
         ");
     }
     catch (Exception ex)

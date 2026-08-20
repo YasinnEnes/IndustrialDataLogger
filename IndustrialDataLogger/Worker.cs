@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using IndustrialDataLogger.Data;
+using IndustrialDataLogger.Enums;
 using IndustrialDataLogger.Hubs;
 using IndustrialDataLogger.Models;
 using IndustrialDataLogger.Models.Entities;
@@ -18,6 +19,7 @@ namespace IndustrialDataLogger
         private readonly ILogger<Worker> _logger;
         private readonly IServiceProvider _serviceProvider;
         private readonly IHubContext<MonitoringHub> _hubContext;
+        private bool? _lastMachineStatus = null;
 
         public Worker(
             ILogger<Worker> logger,
@@ -42,6 +44,7 @@ namespace IndustrialDataLogger
                     var connectionManager = scope.ServiceProvider.GetRequiredService<IPlcConnectionManager>();
                     var alarmService = scope.ServiceProvider.GetRequiredService<IAlarmService>();
                     var digitalTwinService = scope.ServiceProvider.GetRequiredService<IDigitalTwinService>();
+                    var eventLogService = scope.ServiceProvider.GetRequiredService<IEventLogService>();
 
                     // GÜN 4: PLC bağlantı durumunu alarm motoruna bildir
                     await alarmService.ProcessPlcStatusAsync(connectionManager.CurrentState, stoppingToken);
@@ -62,6 +65,20 @@ namespace IndustrialDataLogger
                         if (data != null)
                         {
                             _logger.LogInformation($"Okunan Değerler -> Sıcaklık: {data.Temperature}°C | Basınç: {data.Pressure} bar | Durum: {(data.MachineStatus ? "Çalışıyor" : "Durdu")}");
+
+                            // Makine durumu geçiş kontrolü
+                            if (_lastMachineStatus.HasValue && _lastMachineStatus.Value != data.MachineStatus)
+                            {
+                                if (data.MachineStatus)
+                                {
+                                    await eventLogService.LogEventAsync("MACHINE_STARTED", "Üretim makinesi devreye girdi ve çalışmaya başladı.", AlarmSeverity.Info, "Telemetry", stoppingToken);
+                                }
+                                else
+                                {
+                                    await eventLogService.LogEventAsync("MACHINE_STOPPED", "Üretim makinesi durduruldu veya bekleme moduna geçti.", AlarmSeverity.Warning, "Telemetry", stoppingToken);
+                                }
+                            }
+                            _lastMachineStatus = data.MachineStatus;
 
                             // GÜN 4: Sensör verilerini kural motorundan (Alarm Engine) geçir
                             await alarmService.ProcessSensorReadingAsync(data, stoppingToken);

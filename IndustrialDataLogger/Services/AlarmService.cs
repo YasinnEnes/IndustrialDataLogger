@@ -21,12 +21,13 @@ namespace IndustrialDataLogger.Services
         private readonly ILogger<AlarmService> _logger;
         private readonly IServiceProvider _serviceProvider;
         private readonly IHubContext<MonitoringHub> _hubContext;
+        private readonly IEventLogService _eventLogService;
 
-        // Eşik Tanımları (Sprint 4.1)
-        public const double CriticalTempThreshold = 85.0;
-        public const double WarningTempThreshold = 70.0;
+        // GÜN 3 (Sprint 3.1) Eşik Tanımları
+        public const double CriticalTempThreshold = 90.0;
+        public const double WarningTempThreshold = 80.0;
         public const double CriticalPressureThreshold = 9.0;
-        public const double WarningPressureThreshold = 7.5;
+        public const double WarningPressureThreshold = 8.0;
 
         // Aktif alarmları thread-safe olarak bellekte takip eder
         private readonly ConcurrentDictionary<string, AlarmLog> _activeAlarms = new();
@@ -34,11 +35,13 @@ namespace IndustrialDataLogger.Services
         public AlarmService(
             ILogger<AlarmService> logger,
             IServiceProvider serviceProvider,
-            IHubContext<MonitoringHub> hubContext)
+            IHubContext<MonitoringHub> hubContext,
+            IEventLogService eventLogService)
         {
             _logger = logger;
             _serviceProvider = serviceProvider;
             _hubContext = hubContext;
+            _eventLogService = eventLogService;
         }
 
         public async Task ProcessSensorReadingAsync(SensorData data, CancellationToken cancellationToken = default)
@@ -157,6 +160,9 @@ namespace IndustrialDataLogger.Services
 
             _logger.LogWarning($"[ALARM ÜRETİLDİ] [{severity}] {alarmType}: {message}");
 
+            // GÜN 3 (Sprint 3.4): Sistem Olayı Olarak Kaydet
+            await _eventLogService.LogEventAsync("ALARM_TRIGGERED", $"[{severity}] {alarmType}: {message}", severity, "AlarmEngine", cancellationToken);
+
             // SignalR ile anlık yayın
             await BroadcastAlarmStateAsync(cancellationToken);
         }
@@ -191,6 +197,9 @@ namespace IndustrialDataLogger.Services
 
                 _logger.LogInformation($"[ALARM ÇÖZÜLDÜ] {alarmType} normale döndü.");
 
+                // GÜN 3 (Sprint 3.4): Çözülme Olayını Kaydet
+                await _eventLogService.LogEventAsync("ALARM_RESOLVED", $"Alarm normale döndü ve çözüldü: {alarmType}", AlarmSeverity.Info, "AlarmEngine", cancellationToken);
+
                 // SignalR ile anlık yayın
                 await BroadcastAlarmStateAsync(cancellationToken);
             }
@@ -217,6 +226,9 @@ namespace IndustrialDataLogger.Services
                             activeMatch.Status = AlarmStatus.Acknowledged;
                             activeMatch.AcknowledgedAt = DateTime.UtcNow;
                         }
+
+                        // GÜN 3 (Sprint 3.4): Onaylama Olayını Kaydet
+                        await _eventLogService.LogEventAsync("ALARM_ACKNOWLEDGED", $"Alarm operatör tarafından onaylandı: {entity.AlarmType} (ID: {alarmId})", AlarmSeverity.Info, "Operator", cancellationToken);
 
                         await BroadcastAlarmStateAsync(cancellationToken);
                         return true;
