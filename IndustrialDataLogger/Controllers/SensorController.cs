@@ -21,17 +21,20 @@ namespace IndustrialDataLogger.Controllers
         private readonly IPlcService _plcService;
         private readonly IPlcConnectionManager _plcConnectionManager;
         private readonly IndustrialDbContext _dbContext;
+        private readonly IEventLogService _eventLogService;
         private readonly ILogger<SensorController> _logger;
 
         public SensorController(
             IPlcService plcService,
             IPlcConnectionManager plcConnectionManager,
             IndustrialDbContext dbContext,
+            IEventLogService eventLogService,
             ILogger<SensorController> logger)
         {
             _plcService = plcService;
             _plcConnectionManager = plcConnectionManager;
             _dbContext = dbContext;
+            _eventLogService = eventLogService;
             _logger = logger;
         }
 
@@ -283,21 +286,84 @@ namespace IndustrialDataLogger.Controllers
             }
         }
 
+
+
         [HttpPost("send-command")]
         public async Task<IActionResult> SendCommand([FromBody] CommandModel model, CancellationToken cancellationToken)
         {
             if (!_plcConnectionManager.IsConnected)
             {
-                return StatusCode(503, new { message = "PLC bağlantısı yok, komut iletilemez." });
+                return StatusCode(503, new { success = false, message = "PLC bağlantısı yok, komut iletilemez." });
+            }
+
+            string varName = !string.IsNullOrWhiteSpace(model.VariableName) ? model.VariableName.Trim() : "DB1.DBD0";
+            string dataType = !string.IsNullOrWhiteSpace(model.DataType) ? model.DataType.ToUpperInvariant() : "REAL";
+            object typedValue;
+
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(model.Value))
+                {
+                    switch (dataType)
+                    {
+                        case "BOOL":
+                            typedValue = model.Value.Equals("true", StringComparison.OrdinalIgnoreCase) || model.Value == "1";
+                            break;
+                        case "INT":
+                            typedValue = short.Parse(model.Value);
+                            break;
+                        case "DINT":
+                            typedValue = int.Parse(model.Value);
+                            break;
+                        case "STRING":
+                            typedValue = model.Value;
+                            break;
+                        case "REAL":
+                        case "FLOAT":
+                        default:
+                            typedValue = float.Parse(model.Value.Replace(',', '.'), System.Globalization.CultureInfo.InvariantCulture);
+                            break;
+                    }
+                }
+                else if (model.Setpoint.HasValue)
+                {
+                    typedValue = (float)model.Setpoint.Value;
+                }
+                else
+                {
+                    return BadRequest(new { success = false, message = "Yazılacak değer boş olamaz." });
+                }
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { success = false, message = $"'{model.Value}' değeri '{dataType}' veri tipine dönüştürülemedi: {ex.Message}" });
             }
 
             var request = new PlcWriteRequest
             {
-                VariableName = "DB1.DBD10",
-                Value = model.Setpoint
+                VariableName = varName,
+                DataType = dataType,
+                Value = typedValue
             };
-            await _plcService.WriteDataAsync(request, cancellationToken);
-            return Ok(new { success = true, message = $"Komut iletildi. Setpoint ({model.Setpoint}) başarıyla gönderildi.", setpoint = model.Setpoint });
+
+            var success = await _plcService.WriteDataAsync(request, cancellationToken);
+            if (success)
+            {
+                string logMsg = $"PLC Değişkeni Yazıldı: {varName} ({dataType}) = {typedValue}";
+                await _eventLogService.LogEventAsync("PLC_COMMAND_SENT", logMsg, IndustrialDataLogger.Enums.AlarmSeverity.Info, "ControlPanel", cancellationToken);
+
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Komut başarıyla iletildi. {varName} ({dataType}) adresine '{typedValue}' yazıldı.",
+                    variableName = varName,
+                    dataType = dataType,
+                    value = typedValue,
+                    timestamp = DateTime.UtcNow
+                });
+            }
+
+            return BadRequest(new { success = false, message = $"PLC '{varName}' adresine yazma işlemi başarısız oldu." });
         }
     }
 }

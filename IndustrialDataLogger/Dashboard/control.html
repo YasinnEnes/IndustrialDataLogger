@@ -3,21 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PLC Komut Yönetimi - IoT Panel</title>
+    <title>PLC Komut & Değişken Yönetimi - IoT Panel</title>
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- FontAwesome İkonları -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <!-- Sunucu/Client Yetki Kontrolü: Müşteri buraya URL ile girmeye çalışırsa engellenir -->
     <script>
-        const token = sessionStorage.getItem('token');
+        const token = sessionStorage.getItem('token') || sessionStorage.getItem('jwtToken');
         const userRole = sessionStorage.getItem('userRole');
 
         if (!token) {
             window.location.replace('login.html');
-        } else if (userRole !== 'Programcı') {
+        } else if (userRole !== 'Programcı' && sessionStorage.getItem('roleKey') !== 'Admin' && sessionStorage.getItem('roleKey') !== 'Programmer') {
             alert('Erişim Engellendi (403): Sadece Programcı rolünün PLC Komut sayfasına erişim yetkisi vardır!');
             window.location.replace('index.html');
         }
@@ -27,6 +27,7 @@
         body {
             font-family: 'Inter', sans-serif;
             background-color: #F2F2EB;
+            color: #261311;
         }
 
         .sidebar {
@@ -69,6 +70,19 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
             background-color: #ffffff;
         }
+
+        .type-badge {
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 6px;
+        }
+
+        .type-real { background-color: #e0f2fe; color: #0369a1; }
+        .type-bool { background-color: #dcfce7; color: #15803d; }
+        .type-int { background-color: #fef3c7; color: #b45309; }
+        .type-dint { background-color: #f3e8ff; color: #7e22ce; }
+        .type-string { background-color: #f1f5f9; color: #475569; }
     </style>
 </head>
 <body>
@@ -81,7 +95,7 @@
                     <i class="fa-solid fa-industry text-warning me-2"></i>IoT Panel
                 </h4>
                 <nav>
-                    <a href="index.html"><i class="fa-solid fa-chart-line me-2"></i> Grafikler</a>
+                    <a href="index.html"><i class="fa-solid fa-chart-line me-2"></i> Grafikler & Dijital İkiz</a>
                     <a href="control.html" class="active"><i class="fa-solid fa-sliders me-2"></i> PLC Komut</a>
                 </nav>
             </div>
@@ -94,48 +108,170 @@
 
         <!-- Ana İçerik -->
         <div class="main-content">
-            <h2 class="mb-4" style="color: #261311;">PLC Komut ve Kontrol Paneli</h2>
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2 class="fw-bold mb-1" style="color: #261311;">PLC Komut ve Değişken Yönetimi</h2>
+                    <p class="text-muted mb-0">Siemens S7-1200 DB bloklarına ve bellek adreslerine veri tipine göre güvenli komut gönderimi.</p>
+                </div>
+                <span class="badge bg-success p-2 px-3 rounded-pill" id="plc-status-pill">
+                    <i class="fa-solid fa-plug me-1"></i> PLC Çevrimiçi
+                </span>
+            </div>
 
             <div id="status-alert" class="alert d-none shadow-sm mb-4" role="alert"></div>
 
-            <div class="card card-custom p-4">
-                <h5 class="text-warning mb-3"><i class="fa-solid fa-terminal me-2"></i>Komut Gönderim Alanı</h5>
-                <p class="text-muted">Bu alandan PLC cihazınıza doğrudan komutlar gönderebilir ve parametre değiştirebilirsiniz. Bu sayfa yalnızca <strong>Programcı</strong> yetkisine sahip kullanıcılara açıktır.</p>
+            <div class="row g-4">
+                <!-- Komut Gönderim Alanı -->
+                <div class="col-lg-7">
+                    <div class="card card-custom p-4 h-100">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="fw-bold mb-0 text-dark">
+                                <i class="fa-solid fa-terminal text-warning me-2"></i>Değişken Yazma Paneli (Tag Writer)
+                            </h5>
+                            <span class="badge bg-primary">RBAC: Programcı</span>
+                        </div>
 
-                <!-- Örnek Komut Arayüzü -->
-                <div class="row g-3 mb-4">
-                    <div class="col-md-4">
-                        <label class="form-label fw-semibold">Hedef Sıcaklık Setpoint (°C)</label>
-                        <input type="number" id="setpointTemp" class="form-control" value="50" step="0.1">
-                    </div>
-                    <div class="col-md-12">
-                        <button id="btnSendCommand" onclick="sendPlcCommand()" class="btn btn-success"><i class="fa-solid fa-paper-plane me-1"></i> Komutu PLC'ye Gönder</button>
+                        <!-- 1. Hedef Parametre Seçimi -->
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold text-muted small">1. HEDEF PARAMETRE / DEĞİŞKEN</label>
+                            <select id="paramSelect" class="form-select" onchange="onParamChange()">
+                                <option value="temp" data-addr="DB1.DBD0" data-type="REAL" data-val="55.0">🌡️ Sıcaklık Setpoint (DB1.DBD0 — REAL)</option>
+                                <option value="press" data-addr="DB1.DBD4" data-type="REAL" data-val="6.5">💨 Basınç Setpoint (DB1.DBD4 — REAL)</option>
+                                <option value="machinestatus" data-addr="DB1.DBX8.0" data-type="BOOL" data-val="true">⚡ Ana Makine Durumu (DB1.DBX8.0 — BOOL)</option>
+                                <option value="cyclelimit" data-addr="DB1.DBW10" data-type="INT" data-val="1500">🔢 Hedef Çevrim Sayacı (DB1.DBW10 — INT)</option>
+                                <option value="durationlimit" data-addr="DB1.DBD12" data-type="DINT" data-val="3600">⏱️ Maksimum Süre Limiti (DB1.DBD12 — DINT)</option>
+                                <option value="custom" data-addr="" data-type="REAL" data-val="">🛠️ Özel PLC Tag / DB Adresi (Custom Tag)</option>
+                            </select>
+                        </div>
+
+                        <div class="row g-3 mb-3">
+                            <!-- 2. PLC Değişken Adresi -->
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold text-muted small">PLC DEĞİŞKEN ADRESİ</label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-light"><i class="fa-solid fa-tag"></i></span>
+                                    <input type="text" id="variableAddress" class="form-control font-monospace" value="DB1.DBD0" placeholder="Örn: DB1.DBD0">
+                                </div>
+                            </div>
+
+                            <!-- 3. Veri Tipi Seçici -->
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold text-muted small">VERİ TİPİ (DATA TYPE)</label>
+                                <select id="dataTypeSelect" class="form-select" onchange="onDataTypeChange()">
+                                    <option value="REAL">REAL (Ondalıklı Sayı - 32-bit Float)</option>
+                                    <option value="BOOL">BOOL (Mantıksal - Bit / True-False)</option>
+                                    <option value="INT">INT (16-bit Tam Sayı - Short)</option>
+                                    <option value="DINT">DINT (32-bit Tam Sayı - Long)</option>
+                                    <option value="STRING">STRING (Karakter Dizisi / Metin)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- 4. Dinamik Değer Giriş Alanı -->
+                        <div class="mb-4">
+                            <label class="form-label fw-semibold text-muted small">YAZILACAK DEĞER</label>
+                            
+                            <!-- Sayısal / Metin Giriş Kutusu -->
+                            <div id="textInputContainer">
+                                <div class="input-group">
+                                    <input type="text" id="commandValueInput" class="form-control" value="55.0" placeholder="Değer giriniz...">
+                                    <span class="input-group-text" id="unitBadge">°C</span>
+                                </div>
+                                <small class="text-muted" id="typeHintText">REAL tipi için ondalıklı sayı giriniz (örn: 55.5).</small>
+                            </div>
+
+                            <!-- BOOL Mantıksal Butonları -->
+                            <div id="boolInputContainer" class="d-none">
+                                <div class="btn-group w-100" role="group">
+                                    <input type="radio" class="btn-check" name="boolRadio" id="boolTrue" value="true" checked>
+                                    <label class="btn btn-outline-success py-2 fw-semibold" for="boolTrue">
+                                        <i class="fa-solid fa-circle-check me-1"></i> AÇIK (True / 1)
+                                    </label>
+
+                                    <input type="radio" class="btn-check" name="boolRadio" id="boolFalse" value="false">
+                                    <label class="btn btn-outline-danger py-2 fw-semibold" for="boolFalse">
+                                        <i class="fa-solid fa-circle-xmark me-1"></i> KAPALI (False / 0)
+                                    </label>
+                                </div>
+                                <small class="text-muted">Makine veya bobin durumu için mantıksal değer seçin.</small>
+                            </div>
+                        </div>
+
+                        <!-- Gönder Butonu -->
+                        <div class="d-grid">
+                            <button id="btnSendCommand" onclick="sendPlcCommand()" class="btn btn-success py-2 fw-semibold">
+                                <i class="fa-solid fa-paper-plane me-2"></i>Komutu PLC'ye İlet
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <!-- GÜN 1 (Sprint 1.4 & 1.5): Simülasyon Senaryo Motoru -->
-                <div class="border-top pt-4 mt-2">
-                    <h5 class="text-primary mb-2"><i class="fa-solid fa-flask-vial me-2"></i>Simülasyon Senaryo Motoru</h5>
-                    <p class="text-muted small mb-3">Fiziksel PLC olmadan uç durumları (aşırı ısınma, yüksek basınç, makine duruşu ve bağlantı kopması) test etmek için senaryoyu seçin:</p>
-                    
-                    <div class="d-flex flex-wrap gap-2" id="scenario-btn-group">
-                        <button class="btn btn-outline-success btn-sm" onclick="setScenario('Normal')"><i class="fa-solid fa-circle-check me-1"></i> Normal Çalışma</button>
-                        <button class="btn btn-outline-danger btn-sm" onclick="setScenario('Overheating')"><i class="fa-solid fa-fire me-1"></i> Aşırı Isınma (Overheating 95°C+)</button>
-                        <button class="btn btn-outline-warning btn-sm" onclick="setScenario('HighPressure')"><i class="fa-solid fa-gauge-high me-1"></i> Yüksek Basınç (9.8 bar+)</button>
-                        <button class="btn btn-outline-secondary btn-sm" onclick="setScenario('MachineStop')"><i class="fa-solid fa-hand me-1"></i> Makine Durdur (Stop)</button>
-                        <button class="btn btn-outline-dark btn-sm" onclick="setScenario('PlcDisconnect')"><i class="fa-solid fa-plug-circle-xmark me-1"></i> PLC Bağlantı Kesintisi (Disconnect)</button>
-                    </div>
-                    <div class="mt-2 text-muted small">
-                        Aktif Senaryo: <b id="active-scenario-text" class="text-dark">Normal</b>
+                <!-- Simülasyon Senaryoları & Bilgi Kartı -->
+                <div class="col-lg-5">
+                    <div class="card card-custom p-4 mb-4">
+                        <h5 class="fw-bold text-primary mb-2">
+                            <i class="fa-solid fa-flask-vial me-2"></i>Simülasyon Senaryo Motoru
+                        </h5>
+                        <p class="text-muted small mb-3">Fiziksel PLC olmadan uç durumları (ısınma, yüksek basınç, arıza ve kopma) simüle etmek için senaryoyu seçin:</p>
+                        
+                        <div class="d-flex flex-column gap-2" id="scenario-btn-group">
+                            <button class="btn btn-outline-success text-start" onclick="setScenario('Normal')">
+                                <i class="fa-solid fa-circle-check me-2"></i> <b>Normal Çalışma:</b> Stabil değerler (35-50°C, 4-6 bar)
+                            </button>
+                            <button class="btn btn-outline-danger text-start" onclick="setScenario('Overheating')">
+                                <i class="fa-solid fa-fire me-2"></i> <b>Aşırı Isınma (Overheating):</b> Sıcaklık 95°C+ üzerine tırmanır
+                            </button>
+                            <button class="btn btn-outline-warning text-start text-dark" onclick="setScenario('HighPressure')">
+                                <i class="fa-solid fa-gauge-high me-2"></i> <b>Yüksek Basınç:</b> Basınç 9.8 bar+ üzerine tırmanır
+                            </button>
+                            <button class="btn btn-outline-secondary text-start" onclick="setScenario('MachineStop')">
+                                <i class="fa-solid fa-hand me-2"></i> <b>Makine Durdur:</b> Üretim durur, parametreler düşer
+                            </button>
+                            <button class="btn btn-outline-dark text-start" onclick="setScenario('PlcDisconnect')">
+                                <i class="fa-solid fa-plug-circle-xmark me-2"></i> <b>PLC Bağlantı Kesintisi:</b> Kablo kopması simülasyonu
+                            </button>
+                        </div>
+
+                        <div class="mt-3 text-muted small">
+                            Aktif Senaryo: <span class="badge bg-dark" id="active-scenario-text">Normal</span>
+                        </div>
                     </div>
                 </div>
             </div>
+
+            <!-- Son Gönderilen Komutlar Günlüğü (Audit Log) -->
+            <div class="card card-custom p-4 mt-4">
+                <h5 class="fw-bold text-dark mb-3">
+                    <i class="fa-solid fa-clock-rotate-left text-secondary me-2"></i>Son Gönderilen Komutlar (Audit Log)
+                </h5>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0" style="font-size: 0.85rem;">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Zaman</th>
+                                <th>Hedef Değişken</th>
+                                <th>Veri Tipi</th>
+                                <th>Yazılan Değer</th>
+                                <th>Durum</th>
+                            </tr>
+                        </thead>
+                        <tbody id="commandHistoryTable">
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-3">Henüz bu oturumda komut gönderilmedi.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
         </div>
     </div>
 
     <script>
         const roleSpan = document.getElementById('user-role-text');
         if (roleSpan && userRole) roleSpan.innerText = userRole;
+
+        const commandHistory = [];
 
         function logout() {
             sessionStorage.clear();
@@ -149,6 +285,71 @@
             alertBox.classList.remove('d-none');
         }
 
+        // 1. Parametre Değiştiğinde
+        function onParamChange() {
+            const select = document.getElementById('paramSelect');
+            const opt = select.options[select.selectedIndex];
+            const addr = opt.getAttribute('data-addr');
+            const type = opt.getAttribute('data-type');
+            const val = opt.getAttribute('data-val');
+
+            if (opt.value !== 'custom') {
+                document.getElementById('variableAddress').value = addr;
+                document.getElementById('dataTypeSelect').value = type;
+                if (type === 'BOOL') {
+                    if (val === 'true') document.getElementById('boolTrue').checked = true;
+                    else document.getElementById('boolFalse').checked = true;
+                } else {
+                    document.getElementById('commandValueInput').value = val;
+                }
+            } else {
+                document.getElementById('variableAddress').value = '';
+                document.getElementById('commandValueInput').value = '';
+            }
+
+            onDataTypeChange();
+        }
+
+        // 2. Veri Tipi Değiştiğinde Giriş Alanını Özelleştir
+        function onDataTypeChange() {
+            const type = document.getElementById('dataTypeSelect').value;
+            const textContainer = document.getElementById('textInputContainer');
+            const boolContainer = document.getElementById('boolInputContainer');
+            const unitBadge = document.getElementById('unitBadge');
+            const hint = document.getElementById('typeHintText');
+            const input = document.getElementById('commandValueInput');
+
+            if (type === 'BOOL') {
+                textContainer.classList.add('d-none');
+                boolContainer.classList.remove('d-none');
+            } else {
+                textContainer.classList.remove('d-none');
+                boolContainer.classList.add('d-none');
+
+                if (type === 'REAL') {
+                    input.type = 'number';
+                    input.step = '0.1';
+                    unitBadge.innerText = document.getElementById('paramSelect').value === 'press' ? 'bar' : '°C';
+                    hint.innerText = 'REAL tipi: 32-bit kayan noktalı sayı girin (örn: 55.5).';
+                } else if (type === 'INT') {
+                    input.type = 'number';
+                    input.step = '1';
+                    unitBadge.innerText = 'adet';
+                    hint.innerText = 'INT tipi: 16-bit tam sayı girin (-32768 ile 32767).';
+                } else if (type === 'DINT') {
+                    input.type = 'number';
+                    input.step = '1';
+                    unitBadge.innerText = 'ms';
+                    hint.innerText = 'DINT tipi: 32-bit tam sayı girin.';
+                } else {
+                    input.type = 'text';
+                    unitBadge.innerText = 'txt';
+                    hint.innerText = 'STRING tipi: Karakter dizisi girin.';
+                }
+            }
+        }
+
+        // 3. Simülasyon Senaryosu Çekme
         async function fetchCurrentScenario() {
             try {
                 let res = await fetch('http://localhost:5000/api/Sensor/scenario');
@@ -161,6 +362,7 @@
         }
         fetchCurrentScenario();
 
+        // 4. Senaryo Değiştirme
         async function setScenario(scenarioName) {
             try {
                 const token = sessionStorage.getItem('jwtToken');
@@ -185,18 +387,30 @@
             }
         }
 
+        // 5. Veri Tipine Göre PLC Komut Gönderme
         async function sendPlcCommand() {
-            const valInput = document.getElementById('setpointTemp');
-            const val = parseFloat(valInput.value);
+            const varAddr = document.getElementById('variableAddress').value.trim();
+            const dataType = document.getElementById('dataTypeSelect').value;
             const btn = document.getElementById('btnSendCommand');
 
-            if (isNaN(val)) {
-                showFeedback("Lütfen geçerli bir sayısal değer girin!", false);
+            if (!varAddr) {
+                showFeedback("Lütfen geçerli bir PLC değişken adresi girin (örn: DB1.DBD0)!", false);
                 return;
             }
 
+            let valToSend = '';
+            if (dataType === 'BOOL') {
+                valToSend = document.getElementById('boolTrue').checked ? 'true' : 'false';
+            } else {
+                valToSend = document.getElementById('commandValueInput').value.trim();
+                if (!valToSend) {
+                    showFeedback("Lütfen yazılacak değeri girin!", false);
+                    return;
+                }
+            }
+
             btn.disabled = true;
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i> Gönderiliyor...';
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-2"></i>PLC\'ye Yazılıyor...';
 
             try {
                 const token = sessionStorage.getItem('jwtToken');
@@ -206,21 +420,55 @@
                 const response = await fetch('http://localhost:5000/api/Sensor/send-command', {
                     method: 'POST',
                     headers: headers,
-                    body: JSON.stringify({ setpoint: val })
+                    body: JSON.stringify({
+                        variableName: varAddr,
+                        dataType: dataType,
+                        value: valToSend
+                    })
                 });
 
                 const data = await response.json();
-                if (response.ok) {
-                    showFeedback(data.message || `Setpoint (${val}) başarıyla PLC'ye iletildi.`, true);
+                if (response.ok && data.success) {
+                    showFeedback(data.message || `Değer (${valToSend}) başarıyla '${varAddr}' adresine yazıldı.`, true);
+                    addAuditLog(varAddr, dataType, valToSend, true);
                 } else {
-                    showFeedback(data.message || "Komut gönderilemedi!", false);
+                    showFeedback(data.message || "PLC yazma işlemi başarısız oldu!", false);
+                    addAuditLog(varAddr, dataType, valToSend, false);
                 }
             } catch (err) {
-                showFeedback("Sunucu ile iletişim kurulamadı. Sunucunun çalıştığından emin olun.", false);
+                showFeedback("Sunucu ile iletişim kurulamadı. Backend servisinin çalıştığından emin olun.", false);
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> Komutu PLC\'ye Gönder';
+                btn.innerHTML = '<i class="fa-solid fa-paper-plane me-2"></i>Komutu PLC\'ye İlet';
             }
+        }
+
+        function addAuditLog(addr, type, val, isSuccess) {
+            const table = document.getElementById('commandHistoryTable');
+            const now = new Date().toLocaleTimeString();
+
+            let typeClass = 'type-real';
+            if (type === 'BOOL') typeClass = 'type-bool';
+            else if (type === 'INT') typeClass = 'type-int';
+            else if (type === 'DINT') typeClass = 'type-dint';
+            else if (type === 'STRING') typeClass = 'type-string';
+
+            const row = `
+                <tr>
+                    <td class="text-muted">${now}</td>
+                    <td><code>${addr}</code></td>
+                    <td><span class="type-badge ${typeClass}">${type}</span></td>
+                    <td><b>${val}</b></td>
+                    <td><span class="badge ${isSuccess ? 'bg-success' : 'bg-danger'}">${isSuccess ? 'Yazıldı' : 'Hata'}</span></td>
+                </tr>
+            `;
+
+            if (commandHistory.length === 0) {
+                table.innerHTML = row;
+            } else {
+                table.insertAdjacentHTML('afterbegin', row);
+            }
+            commandHistory.push({ addr, type, val, isSuccess });
         }
     </script>
 </body>
