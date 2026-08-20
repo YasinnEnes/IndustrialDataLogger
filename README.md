@@ -1,99 +1,173 @@
 # 🏭 Industrial IoT & Digital Twin Platform — Siemens S7-1200
 
+<div align="center">
+
+![CI Build](https://github.com/YasinnEnes/IndustrialDataLogger/actions/workflows/ci.yml/badge.svg)
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
+[![C#](https://img.shields.io/badge/C%23-13.0-239120?logo=csharp&logoColor=white)](https://docs.microsoft.com/dotnet/csharp/)
 [![ASP.NET Core](https://img.shields.io/badge/ASP.NET_Core-Web_API_%26_SignalR-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/apps/aspnet)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Time--Series_Persistence-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Entity Framework Core](https://img.shields.io/badge/EF_Core-10.0-512BD4?logo=dotnet&logoColor=white)](https://docs.microsoft.com/ef/core/)
+[![EF Core](https://img.shields.io/badge/EF_Core-10.0_Relational-512BD4?logo=dotnet&logoColor=white)](https://docs.microsoft.com/ef/core/)
 [![Siemens S7-1200](https://img.shields.io/badge/Siemens_PLC-S7--1200_Profinet-00646E?logo=siemens&logoColor=white)](https://www.siemens.com/)
 [![S7.Net+](https://img.shields.io/badge/S7.Net%2B-0.20.0-green)](https://github.com/S7NetPlus/s7netplus)
-[![SignalR](https://img.shields.io/badge/SignalR-Zero_Polling_RealTime-blue)](https://dotnet.microsoft.com/apps/aspnet/signalr)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![SignalR](https://img.shields.io/badge/SignalR-Zero_Polling_WebSockets-blue)](https://dotnet.microsoft.com/apps/aspnet/signalr)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Endüstriyel üretim hatları ve **Siemens S7-1200 PLC** cihazları için geliştirilmiş, yüksek güvenilirlikli, **gerçek zamanlı (SignalR)**, zaman serisi veritabanı (PostgreSQL EF Core) destekli ve **kural motorlu (Alarm Engine)** bir **Endüstri 4.0 Dijital İkiz (Digital Twin)** izleme ve karar destek platformu.
+<p align="center">
+  <b>Endüstri 4.0 ve SCADA standartlarında, Siemens S7-1200 PLC ile çift yönlü haberleşen, yüksek erişilebilirlikli (Self-Healing Auto-Reconnect), sıfır gecikmeli (SignalR WebSocket) ve kural motorlu (Alarm Engine) Dijital İkiz (Digital Twin) platformu.</b>
+</p>
 
----
+[Özellikler](#-temel-özellikler) • [Mimari](#-sistem-mimarisi) • [Veri Akışı](#-veri-akış-şeması) • [Tasarım Desenleri](#-tasarım-desenleri--mühendislik-kararları) • [Dizin Yapısı](#-proje-dizin-yapısı) • [API Dokümantasyonu](#-restful-api--signalr-spesifikasyonu) • [Kurulum](#-kurulum--hızlı-başlangıç) • [CV & Portföy](#-cv--portföy-özeti)
 
-## 📸 Ekran Görüntüleri & Dijital İkiz Arayüzü
-
-| Dijital İkiz & Canlı Telemetri | PLC Komut & Rol Yetkilendirme |
-|:---:|:---:|
-| ![Digital Twin Dashboard](IndustrialDataLogger/Dashboard/screenshot_dashboard.png) | ![PLC Control](IndustrialDataLogger/Dashboard/screenshot_control.png) |
+</div>
 
 ---
 
-## 🏛️ Mimari Blok Diyagramı
+## 🌟 Temel Özellikler
+
+- **🔌 Siemens S7-1200 Profinet/S7Comm Sürücüsü:** Gerçek donanım ve sanal simülasyon modları arasında anlık geçiş (Zero Downtime).
+- **🛡️ Dayanıklı Bağlantı & Durum Makinesi (Auto-Reconnect):** Sahadaki ağ kesintilerine karşı otomatik toparlanan (Self-Healing) 5 kademeli bağlantı yönetimi (`Connected`, `Reconnecting`, `Connecting`, `Disconnected`, `Disconnecting`).
+- **⚡ Sıfır Gecikmeli Telemetri (Zero-Polling SignalR):** Geleneksel HTTP polling yükünü ortadan kaldıran, yeni PLC verisi okunduğunda istemcilere anında push yapan WebSocket mimarisi.
+- **📊 Optimize Zaman Serisi Depolama (PostgreSQL + EF Core 10):** `IX_sensordata_timestamp` B-Tree zaman indeksi ve `AsNoTracking()` ile optimize edilmiş yüksek hacimli telemetri sorgulama.
+- **🚨 Akıllı Alarm & Teşhis Kural Motoru (Fault Detection Engine):**
+  - Çok kademeli eşik denetimi (Kritik / Uyarı seviyeleri).
+  - PLC kopma teşhisi (`PLC_CONNECTION_LOST`).
+  - Parametreler normale döndüğünde otomatik çözülme (`Auto-Resolve`) ve operatör onaylama (`Acknowledge`).
+- **🎛️ Canlı Dijital İkiz Arayüzü (SVG Visualizer):** Makinenin anlık mekanik dönüşünü, basınç akışını ve termal gradyanını yansıtan dinamik animasyonlu endüstriyel operatör paneli.
+
+---
+
+## 🏛️ Sistem Mimarisi
 
 ```mermaid
 flowchart TD
-    subgraph Saha_ve_Kontrol_Kati [Saha & PLC Katmanı]
-        PLC[Siemens S7-1200 PLC\nIP: 192.168.0.1:102 / DB1]
-        MockPLC[Mock Virtual PLC\nSimülasyon Motoru]
+    subgraph Saha_ve_Kontrol_Kati [Saha & Donanım Katmanı]
+        PLC["Siemens S7-1200 PLC\n(IP: 192.168.0.1:102 / DB1)"]
+        MockPLC["Sanal Simülasyon PLC\n(In-Memory Motor)"]
     end
 
-    subgraph Backend_Kati [Backend / Worker / Engine (.NET 10)]
-        PlcMgr[IPlcConnectionManager\nAuto-Reconnect & State Machine]
-        Worker[Background Worker Service\n2s Periyodik Örnekleme]
-        AlarmEng[IAlarmService / Kural Motoru\nEşik Denetimi & Auto-Resolve]
-        DBContext[IndustrialDbContext\nEF Core 10.0]
-        HubContext[IHubContext&lt;MonitoringHub&gt;\nSignalR Real-Time Push]
+    subgraph Backend_Kati [Backend & Engine Katmanı (.NET 10)]
+        PlcMgr["IPlcConnectionManager\n(Auto-Reconnect & State Machine)"]
+        Worker["Background Worker Service\n(2s Periyodik Örnekleme)"]
+        AlarmEng["IAlarmService / Kural Motoru\n(Eşik Denetimi & Auto-Resolve)"]
+        DBContext["IndustrialDbContext\n(EF Core 10.0)"]
+        HubContext["IHubContext&lt;MonitoringHub&gt;\n(SignalR WebSocket)"]
     end
 
-    subgraph Veri_Kati [Veritabanı Katmanı]
-        PG[(PostgreSQL IndustrialDataDB\nsensordata + alarmlogs)]
+    subgraph Veri_Kati [Kalıcılık Katmanı]
+        PG[("PostgreSQL IndustrialDataDB\nsensordata + alarmlogs")]
     end
 
-    subgraph Istemci_Kati [Frontend / UI Katmanı]
-        WebClient[Web Browser / Dashboard\n- Animasyonlu SVG Dijital İkiz\n- Chart.js Canlı & Geçmiş Grafikler\n- Canlı Alarm & Teşhis Paneli]
+    subgraph Istemci_Kati [Kullanıcı & Operatör Arayüzü]
+        WebClient["Modern Dijital İkiz Dashboard\n- Canlı SVG Makine Temsili\n- Chart.js Zaman Serisi\n- Aktif Alarm & Teşhis Paneli"]
     end
 
     PLC -->|S7Comm Protocol| PlcMgr
     MockPLC -->|In-Memory| PlcMgr
     PlcMgr --> Worker
     Worker --> AlarmEng
-    Worker -->|Asenkron Loglama| DBContext
+    Worker -->|Asenkron DB Log| DBContext
     DBContext --> PG
-    Worker -->|WebSocket PUSH| HubContext
-    AlarmEng -->|Alarm State Event| HubContext
-    HubContext -->|Zero-Polling PUSH| WebClient
+    Worker -->|Canlı PUSH| HubContext
+    AlarmEng -->|Alarm Event| HubContext
+    HubContext -->|Zero-Polling WebSocket| WebClient
 ```
 
 ---
 
-## 🚀 Öne Çıkan Özellikler
+## 🔄 Veri Akış Şeması
 
-### 1. PLC Bağlantı Sağlığı & Otomatik Toparlanma (Auto-Reconnect)
-- **5 Kademeli Durum Modeli:** `Connected`, `Disconnected`, `Connecting`, `Disconnecting`, `Reconnecting`.
-- **Otomatik Kurtarma:** PLC bağlantısı aniden koptuğunda veri akışını güvenle kilitler, `Reconnecting` durumuna geçer ve arka planda her 3 saniyede bir PLC'yi yoklayarak insan müdahalesine gerek kalmadan bağlantıyı otomatik ayağa kaldırır.
-- **Thread-Safe Haberleşme:** Worker ve Controller arasındaki soket çakışmalarını önleyen `SemaphoreSlim` kilitleme mekanizması.
+```mermaid
+sequenceDiagram
+    autonumber
+    participant PLC as Siemens S7-1200 / Mock
+    participant Worker as Background Worker
+    participant Alarm as Alarm Rule Engine
+    participant DB as PostgreSQL (EF Core)
+    participant Hub as SignalR Hub
+    participant UI as Digital Twin Dashboard
 
-### 2. Zaman Serisi Veri Kalıcılığı (PostgreSQL + EF Core)
-- **Time-Series İndeksleme:** `IX_sensordata_timestamp` B-Tree zaman indeksi sayesinde milyonlarca kayıt arasından milisaniyeler içinde geçmiş veri çekme.
-- **Performans Optimizasyonu:** `AsNoTracking()` ve `Take/Skip` filtrelemeleri ile minimum bellek ayak izi.
-- **Otomatik Analitik:** Min, Max, Ortalama sıcaklık/basınç ve makine çalışma oranını (`OEE`) dinamik hesaplayan API.
+    loop Her 2 Saniyede Bir
+        Worker->>PLC: ReadSensorDataAsync() [SemaphoreLock]
+        PLC-->>Worker: { Temp: 49.3°C, Press: 5.0b, Status: True }
+        
+        par Alarm Değerlendirme & Veritabanı
+            Worker->>Alarm: EvaluateSensorDataAsync(data)
+            Alarm-->>Alarm: Eşikleri Kontrol Et (Warning / Critical)
+            Worker->>DB: SaveChangesAsync(SensorDataLog)
+        and Canlı WebSocket Yayını
+            Worker->>Hub: Broadcast "ReceiveSensorData"
+            Hub-->>UI: PUSH Canlı Telemetri
+        end
+        
+        opt Alarm Durumu Değiştiyse
+            Alarm->>Hub: Broadcast "ReceiveActiveAlarms"
+            Hub-->>UI: PUSH Aktif Alarmlar & Uyarı
+        end
+    end
+```
 
-### 3. Sıfır Gecikmeli Canlı Yayın (SignalR WebSocket Push)
-- HTTP Polling (`setInterval`) tamamen kaldırılmıştır.
-- PLC'den yeni veri okunduğu anda sunucu veriyi tüm bağlı istemcilere **WebSocket (PUSH)** ile fırlatır.
-- `withAutomaticReconnect` ile ağ dalgalanmalarında istemci tarafında kesintisiz izleme.
+---
 
-### 4. Endüstriyel Karar Destek & Alarm Kural Motoru (Fault Detection)
-- **Eşik Değerleri:**
-  - Sıcaklık > 85°C ➔ 🔴 `CRITICAL_TEMPERATURE`
-  - Sıcaklık > 70°C ➔ 🟡 `HIGH_TEMPERATURE` (Warning)
-  - Basınç > 9.0 bar ➔ 🔴 `CRITICAL_PRESSURE`
-  - Basınç > 7.5 bar ➔ 🟡 `HIGH_PRESSURE` (Warning)
-  - PLC Kopması ➔ 🔴 `PLC_CONNECTION_LOST`
-- **Otomatik Çözülme (Auto-Resolve):** Parametreler normale döndüğünde alarm otomatik olarak `Resolved` statüsüne geçer.
-- **Operatör Onaylama (Acknowledge):** Operatörün gördüğü alarmları onaylayabilmesi için REST API desteği.
+## 🧠 Tasarım Desenleri & Mühendislik Kararları
 
-### 5. Dijital İkiz (Digital Twin) Görselleştirme
-- **Fiziksel Durum Temsili:** Makine çalıştığında dönen motor rotoru, durduğunda anında kilitlenen SVG animasyonu.
-- **Termal Bölme:** Sıcaklığa göre maviden kehribara ve kırmızıya dinamik renk değiştiren ısı odası.
-- **Pnömatik Akış:** Basınç hattı canlı partikül akış efekti.
+| Tasarım Deseni / Konsept | Uygulama Yeri | Sağladığı Fayda |
+|---|---|---|
+| **State Machine Pattern** | `PlcConnectionManager` | PLC bağlantı geçişlerini (`Connecting`, `Connected`, `Reconnecting`, vb.) kontrollü yönetir ve yarış durumlarını (Race Condition) önler. |
+| **Hosted Service (Worker)** | `Worker.cs` | Arka planda non-blocking şekilde periyodik veri okur, `CancellationToken` ile güvenli kapatma sağlar. |
+| **Thread-Safe Concurrency** | `SemaphoreSlim(1,1)` | Worker okuma yaparken Web API komutlarının soketi aynı anda kullanmasını engelleyerek veri bozulmasını önler. |
+| **Rule Engine Pattern** | `AlarmService.cs` | Veri akışını eşik kurallarıyla kıyaslar, alarm üretir ve değer normale döndüğünde otomatik kapatır (`Auto-Resolve`). |
+| **Observer / Push Pattern** | `MonitoringHub (SignalR)` | HTTP Polling maliyetini sıfırlayarak sunucudan bağlı istemcilere milisaniyelik veri akışı sağlar. |
+| **Repository & Unit of Work** | `IndustrialDbContext` | Zaman serisi verilerini B-Tree indeksleri ve `AsNoTracking()` ile bellek dostu şekilde yönetir. |
+
+---
+
+## 📁 Proje Dizin Yapısı
+
+```
+IndustrialDataLogger/
+├── .github/
+│   └── workflows/
+│       └── ci.yml                     # Otomatik derleme ve test doğrulama (CI)
+├── Controllers/
+│   ├── AlarmsController.cs            # Aktif ve geçmiş alarm REST uçları
+│   ├── DigitalTwinController.cs       # Konsolide Dijital İkiz durum API'si
+│   ├── PlcStatusController.cs         # PLC sağlık ve bağlantı durumu API'si
+│   └── SensorController.cs            # Sensör geçmişi, istatistik ve mod yönetimi
+├── Dashboard/
+│   ├── index.html                     # Dijital İkiz Operatör Paneli & Grafikler
+│   ├── control.html                   # PLC Komut ve Çift Yönlü Kontrol Paneli
+│   └── login.html                     # Kullanıcı giriş ve rol yetkilendirme
+├── Data/
+│   └── IndustrialDbContext.cs         # EF Core PostgreSQL veritabanı bağlamı
+├── Enums/
+│   ├── AlarmSeverity.cs               # Info, Warning, Critical seviyeleri
+│   ├── AlarmStatus.cs                 # Active, Resolved, Acknowledged durumları
+│   └── PlcConnectionState.cs          # 5 kademeli bağlantı durumları
+├── Hubs/
+│   └── MonitoringHub.cs               # SignalR WebSocket Hub kanalı
+├── Models/
+│   ├── DTOs/
+│   │   └── DigitalTwinStateDto.cs     # Bütünleşik Dijital İkiz veri transfer modeli
+│   └── Entities/
+│       ├── AlarmLog.cs                # Alarm olay günlüğü veritabanı varlığı
+│       └── SensorDataLog.cs           # Sensör zaman serisi veritabanı varlığı
+├── Services/
+│   ├── AlarmService.cs                # Alarm ve teşhis kural motoru
+│   ├── HybridPlcService.cs            # Gerçek PLC ve Simülasyon köprü servisi
+│   ├── MockPlcService.cs              # Sanal matematiksel PLC simülatörü
+│   ├── PlcConnectionManager.cs        # Auto-Reconnect durum makinesi yöneticisi
+│   └── PlcService.cs                  # S7.Net+ Siemens Profinet sürücüsü
+├── appsettings.json                   # PostgreSQL ve PLC yapılandırma ayarları
+├── Program.cs                         # Servis kayıtları, CORS, SignalR & Middleware
+└── README.md                          # Proje dokümantasyonu
+```
 
 ---
 
 ## 📡 RESTful API & SignalR Spesifikasyonu
+
+### RESTful Uç Noktalar
 
 | Metot | Endpoint | Açıklama |
 |---|---|---|
@@ -108,11 +182,16 @@ flowchart TD
 | `GET` | `/api/alarms/active` | Anlık aktif alarmların listesi. |
 | `GET` | `/api/alarms/history` | Geçmiş alarm olay günlüğü. |
 | `POST` | `/api/alarms/{id}/acknowledge` | Alarmı operatör tarafından onaylar. |
-| `WS` | `/sensorHub` | SignalR WebSocket Hub kanalı (`ReceiveSensorData`, `ReceivePlcStatus`, `ReceiveActiveAlarms`). |
+
+### SignalR WebSocket Olayları (`/sensorHub`)
+
+- `ReceiveSensorData` ➔ `{ temperature, pressure, machineStatus, errorCode, timestamp }`
+- `ReceivePlcStatus` ➔ `{ state, isConnected }`
+- `ReceiveActiveAlarms` ➔ `List<AlarmLog>`
 
 ---
 
-## 🛠️ Kurulum & Yerel Çalıştırma
+## 🛠️ Kurulum & Hızlı Başlangıç
 
 ### Gereksinimler
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
@@ -124,32 +203,39 @@ git clone https://github.com/YasinnEnes/IndustrialDataLogger.git
 cd IndustrialDataLogger
 ```
 
-### 2. Veritabanı Bağlantı Ayarları
-`IndustrialDataLogger/appsettings.json` dosyasında PostgreSQL bağlantı cümlenizi kontrol edin:
+### 2. Veritabanı Yapılandırması
+`IndustrialDataLogger/appsettings.json` dosyasında PostgreSQL bağlantınızı düzenleyin:
 ```json
 "ConnectionStrings": {
   "PostgreSql": "Host=localhost;Port=5432;Database=IndustrialDataDB;Username=postgres;Password=1234"
 }
 ```
 
-### 3. Uygulamayı Başlatın
+### 3. Projeyi Derleyin ve Çalıştırın
 ```bash
+dotnet restore
 dotnet build
 dotnet run --project IndustrialDataLogger
 ```
 
-### 4. Tarayıcıda Açın
-- **Dashboard:** [http://localhost:5000](http://localhost:5000)
-- **Swagger API Docs:** [http://localhost:5000/swagger](http://localhost:5000/swagger)
+### 4. Tarayıcıda İnceleyin
+- **Dijital İkiz Dashboard:** [http://localhost:5000](http://localhost:5000)
+- **Swagger API Dokümantasyonu:** [http://localhost:5000/swagger](http://localhost:5000/swagger)
 
 ---
 
-## 💼 CV / Portföy Maddeleri (İş Başvuruları İçin)
+## 💼 CV & Portföy Özeti
 
 > **Siemens S7-1200 PLC & .NET 10 Tabanlı Endüstriyel Dijital İkiz (Digital Twin) Platformu**
-> - **Endüstriyel Haberleşme:** Siemens S7-1200 PLC ile S7Comm/Profinet üzerinden thread-safe (`SemaphoreSlim`) veri okuma ve çift yönlü komut iletimi sağlayan haberleşme sürücüsü geliştirildi.
-> - **Yüksek Erişilebilirlik (Auto-Reconnect):** Sahadaki ağ kesintilerine karşı otomatik toparlanan (Self-Healing) durum makinesi (State Machine) tasarlandı.
+> - **Endüstriyel Protokol & Otomasyon:** Siemens S7-1200 PLC ile S7Comm/Profinet üzerinden thread-safe (`SemaphoreSlim`) çift yönlü haberleşme sağlayan C# sürücüsü geliştirildi.
+> - **Yüksek Erişilebilirlik (Auto-Reconnect):** Sahadaki ağ kesintilerine karşı insan müdahalesine gerek kalmadan otomatik toparlanan (Self-Healing) durum makinesi (State Machine) tasarlandı.
 > - **Zaman Serisi & Performans:** PostgreSQL ve EF Core üzerinde B-Tree zaman indeksleri ve `AsNoTracking` optimizasyonlarıyla yüksek hacimli telemetri kayıt ve analitik sorgu altyapısı kuruldu.
 > - **Gerçek Zamanlı Mimari:** ASP.NET Core SignalR ile HTTP polling yükü ortadan kaldırılarak sıfır gecikmeli WebSocket veri yayını sağlandı.
 > - **Kural Motoru & Karar Destek:** Kritik sıcaklık, basınç ve bağlantı kesintilerine karşı otomatik alarm üreten ve çözen (Auto-Resolve) endüstriyel kural motoru geliştirildi.
 > - **Dijital İkiz Arayüzü:** Sahadaki makinenin mekanik ve termal durumunu yansıtan canlı animasyonlu SVG Dijital İkiz paneli inşa edildi.
+
+---
+
+## 📄 Lisans
+
+Bu proje [MIT Lisansı](LICENSE) kapsamında lisanslanmıştır.
