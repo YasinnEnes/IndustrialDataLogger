@@ -211,6 +211,33 @@ namespace IndustrialDataLogger.Controllers
             public bool IsSimulation { get; set; }
         }
 
+        // Sprint 1.4 & 1.5: Simülasyon Senaryo Yönetimi API
+        [HttpGet("scenario")]
+        public IActionResult GetScenario()
+        {
+            return Ok(new
+            {
+                scenario = _plcConnectionManager.CurrentScenario.ToString(),
+                availableScenarios = Enum.GetNames<IndustrialDataLogger.Enums.SimulationScenario>()
+            });
+        }
+
+        [HttpPost("scenario")]
+        public IActionResult SetScenario([FromBody] ScenarioRequestModel model)
+        {
+            if (Enum.TryParse<IndustrialDataLogger.Enums.SimulationScenario>(model.Scenario, true, out var scenario))
+            {
+                _plcConnectionManager.SetSimulationScenario(scenario);
+                return Ok(new { success = true, scenario = scenario.ToString(), message = $"Simülasyon senaryosu '{scenario}' olarak ayarlandı." });
+            }
+            return BadRequest(new { success = false, message = $"Geçersiz senaryo: {model.Scenario}. Geçerli senaryolar: {string.Join(", ", Enum.GetNames<IndustrialDataLogger.Enums.SimulationScenario>())}" });
+        }
+
+        public class ScenarioRequestModel
+        {
+            public string Scenario { get; set; } = "Normal";
+        }
+
         [HttpGet("connection-status")]
         public IActionResult GetConnectionStatus()
         {

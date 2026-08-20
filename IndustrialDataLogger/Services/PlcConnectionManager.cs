@@ -16,9 +16,13 @@ namespace IndustrialDataLogger.Services
         private CancellationTokenSource? _reconnectCts;
         private bool _userRequestedDisconnect = true;
 
-        // KRİTİK: Site ilk açıldığında başlangıç durumu kesinlikle Disconnected olmalıdır.
+        public event Action<PlcConnectionEvent, string>? OnConnectionEvent;
+
+        // KRİTİK: Başlangıç durumu kesinlikle Disconnected olmalıdır.
         public PlcConnectionState CurrentState { get; private set; } = PlcConnectionState.Disconnected;
         public bool IsConnected => CurrentState == PlcConnectionState.Connected;
+
+        public SimulationScenario CurrentScenario => _mockPlcService.CurrentScenario;
 
         public static bool IsSimulationMode { get; set; } = true;
         public static bool SimulateConnectionError { get; set; } = false;
@@ -31,6 +35,18 @@ namespace IndustrialDataLogger.Services
             _realPlcService = realPlcService;
             _mockPlcService = mockPlcService;
             _logger = logger;
+        }
+
+        public void SetSimulationScenario(SimulationScenario scenario)
+        {
+            _mockPlcService.SetScenario(scenario);
+            _logger.LogInformation("Simülasyon Senaryosu Güncellendi: {Scenario}", scenario);
+
+            if (scenario == SimulationScenario.PlcDisconnect && IsConnected)
+            {
+                // Bağlantı kopması senaryosu
+                HandleUnexpectedDisconnect();
+            }
         }
 
         public async Task<bool> ConnectAsync(CancellationToken cancellationToken = default)
@@ -65,12 +81,14 @@ namespace IndustrialDataLogger.Services
 
                 CurrentState = PlcConnectionState.Connected;
                 _logger.LogInformation("PLC bağlantısı başarıyla kuruldu.");
+                OnConnectionEvent?.Invoke(PlcConnectionEvent.PlcConnected, "PLC bağlantısı başarıyla kuruldu.");
                 return true;
             }
             catch (Exception ex)
             {
                 _logger.LogError("Bağlantı Hatası: {Message}", ex.Message);
                 CurrentState = PlcConnectionState.Disconnected;
+                OnConnectionEvent?.Invoke(PlcConnectionEvent.PlcDisconnected, $"Bağlantı kurulamadı: {ex.Message}");
                 return false;
             }
         }
@@ -108,6 +126,7 @@ namespace IndustrialDataLogger.Services
 
             CurrentState = PlcConnectionState.Disconnected;
             _logger.LogInformation("PLC bağlantısı kapatıldı. Durum: Disconnected.");
+            OnConnectionEvent?.Invoke(PlcConnectionEvent.PlcDisconnected, "PLC bağlantısı operatör tarafından kapatıldı.");
         }
 
         public async Task<SensorData?> ReadDataAsync(CancellationToken cancellationToken = default)
@@ -116,15 +135,27 @@ namespace IndustrialDataLogger.Services
 
             if (IsSimulationMode)
             {
-                if (!_mockPlcService.IsConnected) await _mockPlcService.ConnectAsync(cancellationToken);
-                return await _mockPlcService.ReadSensorDataAsync(cancellationToken);
+                if (!_mockPlcService.IsConnected && CurrentScenario != SimulationScenario.PlcDisconnect)
+                {
+                    await _mockPlcService.ConnectAsync(cancellationToken);
+                }
+                var data = await _mockPlcService.ReadSensorDataAsync(cancellationToken);
+                if (data == null)
+                {
+                    if (!_userRequestedDisconnect && CurrentState == PlcConnectionState.Connected)
+                    {
+                        HandleUnexpectedDisconnect();
+                    }
+                    return null;
+                }
+                return data;
             }
             else
             {
                 var data = await _realPlcService.ReadSensorDataAsync(cancellationToken);
                 if (data == null)
                 {
-                    // Bağlantı koptu (kablo çekildi / soket kapandı)
+                    // Gerçek PLC bağlantısı koptu (kablo çekildi / soket kapandı)
                     if (!_userRequestedDisconnect && CurrentState == PlcConnectionState.Connected)
                     {
                         HandleUnexpectedDisconnect();
@@ -151,12 +182,14 @@ namespace IndustrialDataLogger.Services
                 if (CurrentState != PlcConnectionState.Connected) return;
 
                 CurrentState = PlcConnectionState.Reconnecting;
-                _logger.LogWarning("PLC bağlantısı beklenmedik şekilde koptu! Durum: Reconnecting. Otomatik toparlanma başlatılıyor...");
+                _logger.LogWarning("PLC bağlantısı beklenmedik şekilde koptu! Durum: Reconnecting. Exponential Backoff ile otomatik toparlanma başlatılıyor...");
+                OnConnectionEvent?.Invoke(PlcConnectionEvent.PlcReconnecting, "PLC bağlantısı beklenmedik şekilde koptu! Otomatik toparlanma devrede.");
 
                 StartAutoReconnect();
             }
         }
 
+        // Sprint 1.2: Exponential Backoff Stratejisi (2s -> 4s -> 8s -> 16s -> 30s Max)
         private void StartAutoReconnect()
         {
             StopAutoReconnect();
@@ -166,21 +199,29 @@ namespace IndustrialDataLogger.Services
 
             _ = Task.Run(async () =>
             {
+                int currentDelaySec = 2; // Başlangıç: 2 saniye
+                int attemptCount = 0;
+
                 while (!token.IsCancellationRequested && !_userRequestedDisconnect && CurrentState == PlcConnectionState.Reconnecting)
                 {
                     try
                     {
-                        await Task.Delay(3000, token);
+                        attemptCount++;
+                        _logger.LogInformation("[Auto-Reconnect] Deneme #{Attempt}. {Delay} saniye bekleniyor...", attemptCount, currentDelaySec);
+                        
+                        await Task.Delay(TimeSpan.FromSeconds(currentDelaySec), token);
                         if (token.IsCancellationRequested || _userRequestedDisconnect) break;
-
-                        _logger.LogInformation("PLC'ye yeniden bağlanmayı deniyor (Auto-Reconnect)...");
 
                         if (IsSimulationMode)
                         {
-                            await _mockPlcService.ConnectAsync(token);
-                            CurrentState = PlcConnectionState.Connected;
-                            _logger.LogInformation("Simülasyon bağlantısı otomatik olarak yeniden kuruldu!");
-                            break;
+                            if (CurrentScenario != SimulationScenario.PlcDisconnect)
+                            {
+                                await _mockPlcService.ConnectAsync(token);
+                                CurrentState = PlcConnectionState.Connected;
+                                _logger.LogInformation("Simülasyon bağlantısı otomatik olarak yeniden kuruldu!");
+                                OnConnectionEvent?.Invoke(PlcConnectionEvent.PlcReconnected, "Simülasyon bağlantısı otomatik olarak yeniden kuruldu!");
+                                break;
+                            }
                         }
                         else
                         {
@@ -189,9 +230,13 @@ namespace IndustrialDataLogger.Services
                             {
                                 CurrentState = PlcConnectionState.Connected;
                                 _logger.LogInformation("Gerçek PLC bağlantısı otomatik olarak yeniden kuruldu (ONLINE)!");
+                                OnConnectionEvent?.Invoke(PlcConnectionEvent.PlcReconnected, "Gerçek PLC bağlantısı otomatik olarak yeniden kuruldu!");
                                 break;
                             }
                         }
+
+                        // Üstel artan bekleme (Max: 30 saniye)
+                        currentDelaySec = Math.Min(30, currentDelaySec * 2);
                     }
                     catch (OperationCanceledException)
                     {
@@ -199,7 +244,8 @@ namespace IndustrialDataLogger.Services
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning("Yeniden bağlanma denemesi başarısız oldu: {Message}. Tekrar denenecek...", ex.Message);
+                        _logger.LogWarning("Yeniden bağlanma denemesi başarısız oldu: {Message}. Üstel bekleme uygulanıyor...", ex.Message);
+                        currentDelaySec = Math.Min(30, currentDelaySec * 2);
                     }
                 }
             }, token);

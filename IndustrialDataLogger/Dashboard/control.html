@@ -103,13 +103,30 @@
                 <p class="text-muted">Bu alandan PLC cihazınıza doğrudan komutlar gönderebilir ve parametre değiştirebilirsiniz. Bu sayfa yalnızca <strong>Programcı</strong> yetkisine sahip kullanıcılara açıktır.</p>
 
                 <!-- Örnek Komut Arayüzü -->
-                <div class="row g-3">
+                <div class="row g-3 mb-4">
                     <div class="col-md-4">
                         <label class="form-label fw-semibold">Hedef Sıcaklık Setpoint (°C)</label>
                         <input type="number" id="setpointTemp" class="form-control" value="50" step="0.1">
                     </div>
                     <div class="col-md-12">
                         <button id="btnSendCommand" onclick="sendPlcCommand()" class="btn btn-success"><i class="fa-solid fa-paper-plane me-1"></i> Komutu PLC'ye Gönder</button>
+                    </div>
+                </div>
+
+                <!-- GÜN 1 (Sprint 1.4 & 1.5): Simülasyon Senaryo Motoru -->
+                <div class="border-top pt-4 mt-2">
+                    <h5 class="text-primary mb-2"><i class="fa-solid fa-flask-vial me-2"></i>Simülasyon Senaryo Motoru</h5>
+                    <p class="text-muted small mb-3">Fiziksel PLC olmadan uç durumları (aşırı ısınma, yüksek basınç, makine duruşu ve bağlantı kopması) test etmek için senaryoyu seçin:</p>
+                    
+                    <div class="d-flex flex-wrap gap-2" id="scenario-btn-group">
+                        <button class="btn btn-outline-success btn-sm" onclick="setScenario('Normal')"><i class="fa-solid fa-circle-check me-1"></i> Normal Çalışma</button>
+                        <button class="btn btn-outline-danger btn-sm" onclick="setScenario('Overheating')"><i class="fa-solid fa-fire me-1"></i> Aşırı Isınma (Overheating 95°C+)</button>
+                        <button class="btn btn-outline-warning btn-sm" onclick="setScenario('HighPressure')"><i class="fa-solid fa-gauge-high me-1"></i> Yüksek Basınç (9.8 bar+)</button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="setScenario('MachineStop')"><i class="fa-solid fa-hand me-1"></i> Makine Durdur (Stop)</button>
+                        <button class="btn btn-outline-dark btn-sm" onclick="setScenario('PlcDisconnect')"><i class="fa-solid fa-plug-circle-xmark me-1"></i> PLC Bağlantı Kesintisi (Disconnect)</button>
+                    </div>
+                    <div class="mt-2 text-muted small">
+                        Aktif Senaryo: <b id="active-scenario-text" class="text-dark">Normal</b>
                     </div>
                 </div>
             </div>
@@ -130,6 +147,38 @@
             alertBox.className = `alert ${isSuccess ? 'alert-success' : 'alert-danger'} shadow-sm mb-4`;
             alertBox.innerHTML = `<i class="fa-solid ${isSuccess ? 'fa-check-circle' : 'fa-triangle-exclamation'} me-2"></i> ${message}`;
             alertBox.classList.remove('d-none');
+        }
+
+        async function fetchCurrentScenario() {
+            try {
+                let res = await fetch('http://localhost:5000/api/Sensor/scenario');
+                if (res.ok) {
+                    let data = await res.json();
+                    let el = document.getElementById('active-scenario-text');
+                    if (el) el.innerText = data.scenario;
+                }
+            } catch (err) { }
+        }
+        fetchCurrentScenario();
+
+        async function setScenario(scenarioName) {
+            try {
+                let res = await fetch('http://localhost:5000/api/Sensor/scenario', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ scenario: scenarioName })
+                });
+                let data = await res.json();
+                if (res.ok) {
+                    showFeedback(`Senaryo başarıyla '${scenarioName}' olarak değiştirildi.`, true);
+                    let el = document.getElementById('active-scenario-text');
+                    if (el) el.innerText = scenarioName;
+                } else {
+                    showFeedback(data.message || "Senaryo değiştirilemedi!", false);
+                }
+            } catch (err) {
+                showFeedback("Sunucu ile bağlantı kurulamadı.", false);
+            }
         }
 
         async function sendPlcCommand() {
