@@ -12,10 +12,29 @@ namespace IndustrialDataLogger.Data
         public DbSet<SensorDataLog> SensorDataLogs { get; set; } = null!;
         public DbSet<AlarmLog> Alarms { get; set; } = null!;
         public DbSet<SystemEventLog> SystemEvents { get; set; } = null!;
+        public DbSet<PlcTagConfig> PlcTags { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<PlcTagConfig>(entity =>
+            {
+                entity.ToTable("plctagconfigs");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.TagName).HasColumnName("tagname").IsRequired().HasMaxLength(100);
+                entity.Property(e => e.DbNumber).HasColumnName("dbnumber").IsRequired();
+                entity.Property(e => e.ByteOffset).HasColumnName("byteoffset").IsRequired();
+                entity.Property(e => e.BitOffset).HasColumnName("bitoffset").IsRequired();
+                entity.Property(e => e.DataType).HasColumnName("datatype").IsRequired().HasMaxLength(20);
+                entity.Property(e => e.Unit).HasColumnName("unit").HasMaxLength(50);
+                entity.Property(e => e.Description).HasColumnName("description").HasMaxLength(255);
+                entity.Property(e => e.IsWritable).HasColumnName("iswritable");
+                entity.Property(e => e.IsMonitored).HasColumnName("ismonitored");
+                entity.Property(e => e.CreatedAt).HasColumnName("createdat").IsRequired();
+                entity.Property(e => e.UpdatedAt).HasColumnName("updatedat");
+            });
 
             modelBuilder.Entity<SensorDataLog>(entity =>
             {

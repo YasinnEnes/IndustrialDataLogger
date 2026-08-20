@@ -97,6 +97,7 @@
                 <nav>
                     <a href="index.html"><i class="fa-solid fa-chart-line me-2"></i> Grafikler & Dijital İkiz</a>
                     <a href="control.html" class="active"><i class="fa-solid fa-sliders me-2"></i> PLC Komut</a>
+                    <a href="tags.html"><i class="fa-solid fa-tags me-2"></i> PLC Değişkenleri</a>
                 </nav>
             </div>
             <div class="p-2">
@@ -113,9 +114,14 @@
                     <h2 class="fw-bold mb-1" style="color: #261311;">PLC Komut ve Değişken Yönetimi</h2>
                     <p class="text-muted mb-0">Siemens S7-1200 DB bloklarına ve bellek adreslerine veri tipine göre güvenli komut gönderimi.</p>
                 </div>
-                <span class="badge bg-success p-2 px-3 rounded-pill" id="plc-status-pill">
-                    <i class="fa-solid fa-plug me-1"></i> PLC Çevrimiçi
-                </span>
+                <div class="d-flex gap-2">
+                    <a href="tags.html" class="btn btn-outline-secondary btn-sm d-flex align-items-center">
+                        <i class="fa-solid fa-gear me-1"></i> Değişkenleri Yönet (TIA Tag Manager)
+                    </a>
+                    <span class="badge bg-success p-2 px-3 rounded-pill" id="plc-status-pill">
+                        <i class="fa-solid fa-plug me-1"></i> PLC Çevrimiçi
+                    </span>
+                </div>
             </div>
 
             <div id="status-alert" class="alert d-none shadow-sm mb-4" role="alert"></div>
@@ -133,13 +139,14 @@
 
                         <!-- 1. Hedef Parametre Seçimi -->
                         <div class="mb-3">
-                            <label class="form-label fw-semibold text-muted small">1. HEDEF PARAMETRE / DEĞİŞKEN</label>
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label class="form-label fw-semibold text-muted small mb-0">1. HEDEF PARAMETRE / DEĞİŞKEN (TIA PORTAL DB)</label>
+                                <a href="tags.html" class="small text-decoration-none"><i class="fa-solid fa-plus-circle me-1"></i>Yeni Değişken Ekle</a>
+                            </div>
                             <select id="paramSelect" class="form-select" onchange="onParamChange()">
-                                <option value="temp" data-addr="DB1.DBD0" data-type="REAL" data-val="55.0">🌡️ Sıcaklık Setpoint (DB1.DBD0 — REAL)</option>
-                                <option value="press" data-addr="DB1.DBD4" data-type="REAL" data-val="6.5">💨 Basınç Setpoint (DB1.DBD4 — REAL)</option>
-                                <option value="machinestatus" data-addr="DB1.DBX8.0" data-type="BOOL" data-val="true">⚡ Ana Makine Durumu (DB1.DBX8.0 — BOOL)</option>
-                                <option value="cyclelimit" data-addr="DB1.DBW10" data-type="INT" data-val="1500">🔢 Hedef Çevrim Sayacı (DB1.DBW10 — INT)</option>
-                                <option value="durationlimit" data-addr="DB1.DBD12" data-type="DINT" data-val="3600">⏱️ Maksimum Süre Limiti (DB1.DBD12 — DINT)</option>
+                                <option value="temp" data-addr="DB1.DBD0" data-type="REAL" data-val="55.0">🌡️ Temperature (DB1.DBD0 — REAL) [TIA Portal DB1]</option>
+                                <option value="press" data-addr="DB1.DBD4" data-type="REAL" data-val="6.5">💨 Pressure (DB1.DBD4 — REAL) [TIA Portal DB1]</option>
+                                <option value="machinestatus" data-addr="DB1.DBX8.0" data-type="BOOL" data-val="true">⚡ MachineStatus (DB1.DBX8.0 — BOOL) [TIA Portal DB1]</option>
                                 <option value="custom" data-addr="" data-type="REAL" data-val="">🛠️ Özel PLC Tag / DB Adresi (Custom Tag)</option>
                             </select>
                         </div>
@@ -285,10 +292,52 @@
             alertBox.classList.remove('d-none');
         }
 
-        // 1. Parametre Değiştiğinde
+        // 1. Dinamik Tag Listesini API'den Çek
+        async function loadDynamicTags() {
+            try {
+                const res = await fetch('http://localhost:5000/api/tags');
+                if (res.ok) {
+                    const tags = await res.json();
+                    if (tags && tags.length > 0) {
+                        const select = document.getElementById('paramSelect');
+                        select.innerHTML = '';
+                        tags.forEach(t => {
+                            let addr = t.dataType === 'BOOL' ? `DB${t.dbNumber}.DBX${t.byteOffset}.${t.bitOffset}` : (t.dataType === 'INT' ? `DB${t.dbNumber}.DBW${t.byteOffset}` : `DB${t.dbNumber}.DBD${t.byteOffset}`);
+                            let icon = t.tagName.toLowerCase().includes('temp') ? '🌡️' : (t.tagName.toLowerCase().includes('press') ? '💨' : (t.dataType === 'BOOL' ? '⚡' : '🔢'));
+                            let defVal = t.dataType === 'BOOL' ? 'true' : (t.dataType === 'REAL' ? '50.0' : '100');
+
+                            let opt = document.createElement('option');
+                            opt.value = t.tagName;
+                            opt.setAttribute('data-addr', addr);
+                            opt.setAttribute('data-type', t.dataType);
+                            opt.setAttribute('data-val', defVal);
+                            opt.setAttribute('data-unit', t.unit || '');
+                            opt.innerText = `${icon} ${t.tagName} (${addr} — ${t.dataType}) ${t.unit ? '[' + t.unit + ']' : ''}`;
+                            select.appendChild(opt);
+                        });
+
+                        // Özel Tag Ekleme Seçeneği
+                        let customOpt = document.createElement('option');
+                        customOpt.value = 'custom';
+                        customOpt.setAttribute('data-addr', '');
+                        customOpt.setAttribute('data-type', 'REAL');
+                        customOpt.setAttribute('data-val', '');
+                        customOpt.innerText = '🛠️ Özel PLC Tag / DB Adresi (Custom Tag)';
+                        select.appendChild(customOpt);
+
+                        onParamChange();
+                    }
+                }
+            } catch (err) { }
+        }
+        loadDynamicTags();
+
+        // 2. Parametre Değiştiğinde
         function onParamChange() {
             const select = document.getElementById('paramSelect');
             const opt = select.options[select.selectedIndex];
+            if (!opt) return;
+
             const addr = opt.getAttribute('data-addr');
             const type = opt.getAttribute('data-type');
             const val = opt.getAttribute('data-val');

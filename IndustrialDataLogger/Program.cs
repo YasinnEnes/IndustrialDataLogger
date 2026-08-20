@@ -115,6 +115,7 @@ builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
 builder.Services.AddSingleton<IEventLogService, EventLogService>();
 builder.Services.AddSingleton<IAlarmService, AlarmService>();
 builder.Services.AddSingleton<IDigitalTwinService, DigitalTwinService>();
+builder.Services.AddSingleton<ITagConfigService, TagConfigService>();
 
 // 4. Arka Plan İşçisi (Worker Persistence & SignalR Push & Alarms - GÜN 2, 3, 4, 5)
 builder.Services.AddHostedService<Worker>();
@@ -166,7 +167,25 @@ using (var scope = app.Services.CreateScope())
                 timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
             CREATE INDEX IF NOT EXISTS ""IX_systemeventlogs_timestamp"" ON systemeventlogs (timestamp DESC);
+
+            CREATE TABLE IF NOT EXISTS plctagconfigs (
+                id BIGSERIAL PRIMARY KEY,
+                tagname VARCHAR(100) NOT NULL,
+                dbnumber INT NOT NULL DEFAULT 1,
+                byteoffset INT NOT NULL DEFAULT 0,
+                bitoffset INT NOT NULL DEFAULT 0,
+                datatype VARCHAR(20) NOT NULL DEFAULT 'REAL',
+                unit VARCHAR(50),
+                description VARCHAR(255),
+                iswritable BOOLEAN DEFAULT TRUE,
+                ismonitored BOOLEAN DEFAULT TRUE,
+                createdat TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updatedat TIMESTAMPTZ
+            );
         ");
+
+        var tagConfigService = scope.ServiceProvider.GetRequiredService<ITagConfigService>();
+        tagConfigService.EnsureDefaultTagsSeededAsync().GetAwaiter().GetResult();
     }
     catch (Exception ex)
     {

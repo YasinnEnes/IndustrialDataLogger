@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PLC Değişken & DB Konfigüratörü - IoT Panel</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- FontAwesome İkonları -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Yetki Kontrolü -->
+    <script>
+        const token = sessionStorage.getItem('token') || sessionStorage.getItem('jwtToken');
+        const userRole = sessionStorage.getItem('userRole');
+
+        if (!token) {
+            window.location.replace('login.html');
+        } else if (userRole !== 'Programcı' && sessionStorage.getItem('roleKey') !== 'Admin' && sessionStorage.getItem('roleKey') !== 'Programmer') {
+            alert('Erişim Engellendi (403): Sadece Programcı rolünün PLC Değişken Yönetimi sayfasına erişim yetkisi vardır!');
+            window.location.replace('index.html');
+        }
+    </script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #F2F2EB;
+            color: #261311;
+        }
+
+        .sidebar {
+            min-height: 100vh;
+            background: #261311;
+            color: #fff;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 260px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .main-content {
+            margin-left: 260px;
+            padding: 30px;
+        }
+
+        .sidebar a {
+            color: #d6c5c2;
+            text-decoration: none;
+            padding: 12px 20px;
+            display: block;
+            border-radius: 8px;
+            margin: 4px 10px;
+            transition: all 0.3s;
+        }
+
+            .sidebar a:hover, .sidebar a.active {
+                background: #ba6a36;
+                color: #fff;
+            }
+
+        .card-custom {
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            background-color: #ffffff;
+        }
+
+        .type-badge {
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 6px;
+        }
+
+        .type-real { background-color: #e0f2fe; color: #0369a1; }
+        .type-bool { background-color: #dcfce7; color: #15803d; }
+        .type-int { background-color: #fef3c7; color: #b45309; }
+        .type-dint { background-color: #f3e8ff; color: #7e22ce; }
+        .type-string { background-color: #f1f5f9; color: #475569; }
+    </style>
+</head>
+<body>
+
+    <div class="container-fluid p-0">
+        <!-- Sol Menü -->
+        <div class="sidebar d-none d-md-block p-3">
+            <div>
+                <h4 class="text-white text-center py-3 mb-4 border-bottom border-secondary">
+                    <i class="fa-solid fa-industry text-warning me-2"></i>IoT Panel
+                </h4>
+                <nav>
+                    <a href="index.html"><i class="fa-solid fa-chart-line me-2"></i> Grafikler & Dijital İkiz</a>
+                    <a href="control.html"><i class="fa-solid fa-sliders me-2"></i> PLC Komut</a>
+                    <a href="tags.html" class="active"><i class="fa-solid fa-tags me-2"></i> PLC Değişkenleri</a>
+                </nav>
+            </div>
+            <div class="p-2">
+                <button onclick="logout()" class="btn btn-outline-danger btn-sm w-100 text-start p-2">
+                    <i class="fa-solid fa-right-from-bracket me-1"></i> Çıkış Yap (<span id="user-role-text">Programcı</span>)
+                </button>
+            </div>
+        </div>
+
+        <!-- Ana İçerik -->
+        <div class="main-content">
+            <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+                <div>
+                    <h2 class="fw-bold mb-1" style="color: #261311;">TIA Portal Değişken & DB Konfigüratörü</h2>
+                    <p class="text-muted mb-0">Herhangi bir TIA Portal projesindeki DB blokları ve değişkenleri dinamik olarak sisteme bağlayın.</p>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#importModal">
+                        <i class="fa-solid fa-file-import me-1"></i> TIA Portal DB Kodu Yapıştır
+                    </button>
+                    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addTagModal" onclick="openAddModal()">
+                        <i class="fa-solid fa-plus me-1"></i> Yeni Değişken Ekle
+                    </button>
+                </div>
+            </div>
+
+            <div id="status-alert" class="alert d-none shadow-sm mb-4" role="alert"></div>
+
+            <!-- TIA Portal DB1 Bilgilendirme Kartı -->
+            <div class="card card-custom p-3 mb-4 bg-light border-start border-4 border-primary">
+                <div class="d-flex align-items-center">
+                    <i class="fa-solid fa-circle-info text-primary fa-2x me-3"></i>
+                    <div>
+                        <b class="text-dark">TIA Portal Uyumluluğu:</b>
+                        <div class="text-muted small">
+                            Aşağıdaki değişkenler TIA Portal projenizdeki <b>Data_block_1 [DB1]</b> yapısına göre dinamik olarak listelenir. Yeni bir TIA Portal projesine geçtiğinizde buradaki değişkenleri güncelleyerek sistemi anında uyumlu hale getirebilirsiniz.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Değişkenler Tablosu -->
+            <div class="card card-custom p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="fw-bold mb-0 text-dark">
+                        <i class="fa-solid fa-list-check text-warning me-2"></i>Aktif PLC Değişken Listesi (Tags)
+                    </h5>
+                    <span class="badge bg-secondary" id="tag-count-badge">0 Değişken</span>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>Değişken Adı (Tag Name)</th>
+                                <th>DB No</th>
+                                <th>Offset / Adres</th>
+                                <th>Veri Tipi</th>
+                                <th>Birim</th>
+                                <th>Açıklama</th>
+                                <th>Yazılabilir</th>
+                                <th class="text-end">İşlemler</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tagsTableBody">
+                            <tr>
+                                <td colspan="9" class="text-center py-4 text-muted">
+                                    <i class="fa-solid fa-spinner fa-spin me-2"></i> Değişkenler yükleniyor...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 1: Değişken Ekle / Düzenle -->
+    <div class="modal fade" id="addTagModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold" id="modalTitle">Yeni PLC Değişkeni Ekle</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="tagForm">
+                        <input type="hidden" id="tagId" value="">
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold small text-muted">DEĞİŞKEN ADI (TAG NAME)</label>
+                            <input type="text" id="tagNameInput" class="form-control" placeholder="Örn: Temperature, Pressure, MotorSpeed" required>
+                        </div>
+
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label fw-semibold small text-muted">DB NUMARASI</label>
+                                <input type="number" id="dbNumberInput" class="form-control" value="1" min="1" required>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label fw-semibold small text-muted">VERİ TİPİ</label>
+                                <select id="dataTypeInput" class="form-select">
+                                    <option value="REAL">REAL (32-bit Float)</option>
+                                    <option value="BOOL">BOOL (1-bit Mantıksal)</option>
+                                    <option value="INT">INT (16-bit Tam Sayı)</option>
+                                    <option value="DINT">DINT (32-bit Tam Sayı)</option>
+                                    <option value="STRING">STRING (Metin)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label fw-semibold small text-muted">BYTE OFFSET</label>
+                                <input type="number" id="byteOffsetInput" class="form-control" value="0" min="0" required>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label fw-semibold small text-muted">BIT OFFSET (BOOL İçin)</label>
+                                <input type="number" id="bitOffsetInput" class="form-control" value="0" min="0" max="7">
+                            </div>
+                        </div>
+
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label fw-semibold small text-muted">BİRİM (UNIT)</label>
+                                <input type="text" id="unitInput" class="form-control" placeholder="Örn: °C, bar, RPM, L">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label fw-semibold small text-muted">AÇIKLAMA</label>
+                                <input type="text" id="descInput" class="form-control" placeholder="Örn: Ana hat sıcaklığı">
+                            </div>
+                        </div>
+
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="isWritableCheck" checked>
+                            <label class="form-check-label" for="isWritableCheck">Komut Paneli Üzerinden Yazılabilir (Writable)</label>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                    <button type="button" class="btn btn-success" onclick="saveTag()">Kaydet</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 2: TIA Portal DB Kodu Yapıştır & İçe Aktar -->
+    <div class="modal fade" id="importModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold text-primary">
+                        <i class="fa-solid fa-file-import me-2"></i>TIA Portal DB Metnini İçe Aktar
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small">
+                        TIA Portal'daki Data Block tablonuzdan kopyaladığınız satırları veya SCL/DB kaynak kodunu aşağıya yapıştırın. Sistem değişken adı, veri tipi ve offset değerlerini otomatik olarak ayrıştıracaktır:
+                    </p>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold small text-muted">HEDEF DB NUMARASI</label>
+                        <input type="number" id="importDbNumber" class="form-control" value="1" min="1" style="max-width: 150px;">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold small text-muted">TIA PORTAL DB TABLOSU VEYA METNİ</label>
+                        <textarea id="importSourceText" class="form-control font-monospace" rows="8" placeholder="Örnek 1 (TIA Portal Tablo Kopyası):
+Temperature    Real    0.0
+Pressure       Real    4.0
+MachineStatus  Bool    8.0
+
+Örnek 2 (SCL Kodu):
+Temperature : Real;
+Pressure : Real;
+MachineStatus : Bool;"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Kapat</button>
+                    <button type="button" class="btn btn-primary" onclick="importTiaSource()">
+                        <i class="fa-solid fa-wand-magic-sparkles me-1"></i> Otomatik Ayrıştır ve İçe Aktar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        const roleSpan = document.getElementById('user-role-text');
+        if (roleSpan && userRole) roleSpan.innerText = userRole;
+
+        function logout() {
+            sessionStorage.clear();
+            window.location.replace('login.html');
+        }
+
+        function showFeedback(message, isSuccess) {
+            const alertBox = document.getElementById('status-alert');
+            alertBox.className = `alert ${isSuccess ? 'alert-success' : 'alert-danger'} shadow-sm mb-4`;
+            alertBox.innerHTML = `<i class="fa-solid ${isSuccess ? 'fa-check-circle' : 'fa-triangle-exclamation'} me-2"></i> ${message}`;
+            alertBox.classList.remove('d-none');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // 1. Değişkenleri Yükle
+        async function fetchTags() {
+            try {
+                const res = await fetch('http://localhost:5000/api/tags');
+                if (res.ok) {
+                    const tags = await res.json();
+                    renderTagsTable(tags);
+                } else {
+                    document.getElementById('tagsTableBody').innerHTML = `<tr><td colspan="9" class="text-center text-danger py-3">Değişkenler yüklenemedi.</td></tr>`;
+                }
+            } catch (err) {
+                document.getElementById('tagsTableBody').innerHTML = `<tr><td colspan="9" class="text-center text-danger py-3">Sunucuya bağlanılamadı.</td></tr>`;
+            }
+        }
+        fetchTags();
+
+        function renderTagsTable(tags) {
+            const tbody = document.getElementById('tagsTableBody');
+            const countBadge = document.getElementById('tag-count-badge');
+            if (countBadge) countBadge.innerText = `${tags.length} Değişken`;
+
+            if (tags.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted py-4">Kayıtlı PLC değişkeni bulunamadı. Yeni bir değişken ekleyin veya TIA Portal'dan içe aktarın.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = tags.map((t, idx) => {
+                let typeClass = 'type-real';
+                if (t.dataType === 'BOOL') typeClass = 'type-bool';
+                else if (t.dataType === 'INT') typeClass = 'type-int';
+                else if (t.dataType === 'DINT') typeClass = 'type-dint';
+                else if (t.dataType === 'STRING') typeClass = 'type-string';
+
+                let addr = t.dataType === 'BOOL' ? `DB${t.dbNumber}.DBX${t.byteOffset}.${t.bitOffset}` : (t.dataType === 'INT' ? `DB${t.dbNumber}.DBW${t.byteOffset}` : `DB${t.dbNumber}.DBD${t.byteOffset}`);
+
+                return `
+                    <tr>
+                        <td class="text-muted">${idx + 1}</td>
+                        <td><b class="text-dark">${t.tagName}</b></td>
+                        <td><span class="badge bg-light text-dark border">DB${t.dbNumber}</span></td>
+                        <td><code>${addr}</code></td>
+                        <td><span class="type-badge ${typeClass}">${t.dataType}</span></td>
+                        <td>${t.unit ? `<span class="badge bg-secondary">${t.unit}</span>` : '-'}</td>
+                        <td class="text-muted small">${t.description || '-'}</td>
+                        <td>${t.isWritable ? '<i class="fa-solid fa-check text-success"></i>' : '<i class="fa-solid fa-xmark text-muted"></i>'}</td>
+                        <td class="text-end">
+                            <button class="btn btn-outline-primary btn-sm me-1" onclick="openEditModal(${JSON.stringify(t).replace(/"/g, '&quot;')})">
+                                <i class="fa-solid fa-pen"></i>
+                            </button>
+                            <button class="btn btn-outline-danger btn-sm" onclick="deleteTag(${t.id}, '${t.tagName}')">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function openAddModal() {
+            document.getElementById('modalTitle').innerText = "Yeni PLC Değişkeni Ekle";
+            document.getElementById('tagId').value = "";
+            document.getElementById('tagNameInput').value = "";
+            document.getElementById('dbNumberInput').value = "1";
+            document.getElementById('byteOffsetInput').value = "0";
+            document.getElementById('bitOffsetInput').value = "0";
+            document.getElementById('dataTypeInput').value = "REAL";
+            document.getElementById('unitInput').value = "";
+            document.getElementById('descInput').value = "";
+            document.getElementById('isWritableCheck').checked = true;
+        }
+
+        function openEditModal(tag) {
+            document.getElementById('modalTitle').innerText = "Değişkeni Düzenle: " + tag.tagName;
+            document.getElementById('tagId').value = tag.id;
+            document.getElementById('tagNameInput').value = tag.tagName;
+            document.getElementById('dbNumberInput').value = tag.dbNumber;
+            document.getElementById('byteOffsetInput').value = tag.byteOffset;
+            document.getElementById('bitOffsetInput').value = tag.bitOffset;
+            document.getElementById('dataTypeInput').value = tag.dataType;
+            document.getElementById('unitInput').value = tag.unit || "";
+            document.getElementById('descInput').value = tag.description || "";
+            document.getElementById('isWritableCheck').checked = tag.isWritable;
+
+            new bootstrap.Modal(document.getElementById('addTagModal')).show();
+        }
+
+        async function saveTag() {
+            const id = document.getElementById('tagId').value;
+            const tagName = document.getElementById('tagNameInput').value.trim();
+            const dbNumber = parseInt(document.getElementById('dbNumberInput').value) || 1;
+            const byteOffset = parseInt(document.getElementById('byteOffsetInput').value) || 0;
+            const bitOffset = parseInt(document.getElementById('bitOffsetInput').value) || 0;
+            const dataType = document.getElementById('dataTypeInput').value;
+            const unit = document.getElementById('unitInput').value.trim();
+            const description = document.getElementById('descInput').value.trim();
+            const isWritable = document.getElementById('isWritableCheck').checked;
+
+            if (!tagName) {
+                alert("Lütfen değişken adını girin!");
+                return;
+            }
+
+            const payload = {
+                tagName, dbNumber, byteOffset, bitOffset, dataType, unit, description, isWritable, isMonitored: true
+            };
+
+            const url = id ? `http://localhost:5000/api/tags/${id}` : 'http://localhost:5000/api/tags';
+            const method = id ? 'PUT' : 'POST';
+
+            try {
+                const res = await fetch(url, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    bootstrap.Modal.getInstance(document.getElementById('addTagModal')).hide();
+                    showFeedback(`'${tagName}' değişkeni başarıyla kaydedildi.`, true);
+                    fetchTags();
+                } else {
+                    const err = await res.json();
+                    alert(err.message || "Kaydetme başarısız!");
+                }
+            } catch (e) {
+                alert("Sunucu ile iletişim kurulamadı.");
+            }
+        }
+
+        async function deleteTag(id, name) {
+            if (!confirm(`'${name}' değişkenini silmek istediğinize emin misiniz?`)) return;
+
+            try {
+                const res = await fetch(`http://localhost:5000/api/tags/${id}`, { method: 'DELETE' });
+                if (res.ok) {
+                    showFeedback(`'${name}' değişkeni başarıyla silindi.`, true);
+                    fetchTags();
+                } else {
+                    alert("Değişken silinemedi.");
+                }
+            } catch (e) {
+                alert("Sunucu ile iletişim kurulamadı.");
+            }
+        }
+
+        async function importTiaSource() {
+            const text = document.getElementById('importSourceText').value.trim();
+            const dbNum = parseInt(document.getElementById('importDbNumber').value) || 1;
+
+            if (!text) {
+                alert("Lütfen TIA Portal DB metnini yapıştırın!");
+                return;
+            }
+
+            try {
+                const res = await fetch('http://localhost:5000/api/tags/import-tia', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sourceText: text, dbNumber: dbNum })
+                });
+
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    bootstrap.Modal.getInstance(document.getElementById('importModal')).hide();
+                    showFeedback(data.message || "Değişkenler başarıyla içe aktarıldı.", true);
+                    fetchTags();
+                } else {
+                    alert(data.message || "Ayrıştırma başarısız oldu.");
+                }
+            } catch (e) {
+                alert("Sunucuya bağlanılamadı.");
+            }
+        }
+    </script>
+</body>
+</html>

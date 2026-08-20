@@ -451,6 +451,7 @@
 
             if (isAuthorized) {
                 menuHTML += `<a href="control.html"><i class="fa-solid fa-sliders me-2"></i> PLC Komut</a>`;
+                menuHTML += `<a href="tags.html"><i class="fa-solid fa-tags me-2"></i> PLC Değişkenleri</a>`;
             } else {
                 const plcMgmt = document.getElementById('plc-management-section');
                 if (plcMgmt) plcMgmt.style.display = 'none';
