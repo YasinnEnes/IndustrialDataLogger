@@ -56,5 +56,20 @@ namespace IndustrialDataLogger.Controllers
             var overview = await _digitalTwinService.GetPlantOverviewAsync(cancellationToken);
             return Ok(overview);
         }
+
+        /// <summary>
+        /// What-If Simülasyon Motoru: Varsayımsal parametrelerle (sıcaklık, basınç, hız) olası sağlık skorunu, alarmları ve OEE değişimini tahmin eder.
+        /// </summary>
+        [HttpPost("simulate")]
+        public async Task<IActionResult> SimulateWhatIfScenario([FromBody] SimulationRequestDto request, CancellationToken cancellationToken = default)
+        {
+            if (request == null)
+            {
+                return BadRequest(new { message = "Geçersiz simülasyon parametreleri." });
+            }
+
+            var result = await _digitalTwinService.SimulateWhatIfScenarioAsync(request, cancellationToken);
+            return Ok(result);
+        }
     }
 }

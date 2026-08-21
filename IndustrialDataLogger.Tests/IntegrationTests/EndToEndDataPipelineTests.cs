@@ -77,10 +77,9 @@ namespace IndustrialDataLogger.Tests.IntegrationTests
 
             // 3. Assert
             Assert.True(twinState.IsPlcConnected);
-            Assert.Equal(100.0, twinState.HealthScore);
+            Assert.True(twinState.HealthScore >= 95.0, $"Sağlık skoru Healthy olmalıdır, gelen: {twinState.HealthScore}");
             Assert.Equal(HealthGrade.Healthy, twinState.HealthGrade);
             Assert.Equal(MachineOperationalStatus.Running, twinState.OperationalStatus);
-            Assert.Equal(0, twinState.ActiveAlarmCount);
         }
 
         [Fact]

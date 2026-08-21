@@ -400,6 +400,100 @@
                 </div>
             </div>
 
+            <!-- What-If / Digital Twin Simülasyon Laboratuvarı (Karar Destek Motoru) -->
+            <div class="card card-custom p-3 mb-3 bg-white border-primary" id="whatif-simulation-card" style="border-left: 4px solid #3b82f6;">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                        <h6 class="fw-bold mb-0 text-dark">
+                            <i class="fa-solid fa-flask-vial text-primary me-2"></i>What-If / Dijital İkiz Senaryo Simülasyon Laboratuvarı
+                        </h6>
+                        <small class="text-muted" style="font-size: 0.75rem;">Fiziksel PLC'ye dokunmadan varsayımsal parametrelerin Sağlık Skoru, OEE ve Alarmlar üzerindeki etkisini test edin.</small>
+                    </div>
+                    <span class="badge bg-primary px-3 py-2" id="whatif-risk-badge" style="font-size: 0.75rem;">
+                        <i class="fa-solid fa-calculator me-1"></i>Simülatör Hazır
+                    </span>
+                </div>
+
+                <div class="row g-3">
+                    <!-- Sol Kolon: Simülasyon Girdi Kontrolleri -->
+                    <div class="col-lg-5 border-end pe-lg-3">
+                        <div class="mb-2">
+                            <div class="d-flex justify-content-between">
+                                <label class="form-label small fw-bold text-dark mb-1">Hedef Sıcaklık (°C)</label>
+                                <span class="badge bg-light text-dark fw-bold" id="lbl-whatif-temp">85.0 °C</span>
+                            </div>
+                            <input type="range" class="form-range" id="slider-whatif-temp" min="20" max="110" step="0.5" value="85" oninput="document.getElementById('lbl-whatif-temp').innerText = this.value + ' °C'">
+                        </div>
+
+                        <div class="mb-2">
+                            <div class="d-flex justify-content-between">
+                                <label class="form-label small fw-bold text-dark mb-1">Hedef Basınç (bar)</label>
+                                <span class="badge bg-light text-dark fw-bold" id="lbl-whatif-press">7.5 bar</span>
+                            </div>
+                            <input type="range" class="form-range" id="slider-whatif-press" min="1.0" max="12.0" step="0.1" value="7.5" oninput="document.getElementById('lbl-whatif-press').innerText = this.value + ' bar'">
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between">
+                                <label class="form-label small fw-bold text-dark mb-1">Hat Çalışma Hızı (%)</label>
+                                <span class="badge bg-light text-dark fw-bold" id="lbl-whatif-speed">110 %</span>
+                            </div>
+                            <input type="range" class="form-range" id="slider-whatif-speed" min="50" max="150" step="5" value="110" oninput="document.getElementById('lbl-whatif-speed').innerText = this.value + ' %'">
+                        </div>
+
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-primary btn-sm flex-fill fw-bold shadow-sm" onclick="runWhatIfSimulation()">
+                                <i class="fa-solid fa-play me-1"></i>Senaryoyu Simüle Et
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="fillWhatIfWithLiveData()" title="Canlı Verilerle Doldur">
+                                <i class="fa-solid fa-wand-magic-sparkles me-1"></i>Canlı Veri Al
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Sağ Kolon: Canlı vs. Simülasyon Kıyaslama Kartları -->
+                    <div class="col-lg-7">
+                        <div class="row g-2 text-center mb-2">
+                            <div class="col-6">
+                                <div class="p-2 border rounded bg-light">
+                                    <div class="text-muted small" style="font-size: 0.70rem;">SAĞLIK SKORU ETKİSİ</div>
+                                    <div class="d-flex justify-content-center align-items-center gap-2 mt-1">
+                                        <span class="h5 mb-0 fw-bold text-muted" id="cmp-live-health">100%</span>
+                                        <i class="fa-solid fa-arrow-right text-muted small"></i>
+                                        <span class="h5 mb-0 fw-bold text-danger" id="cmp-sim-health">--</span>
+                                    </div>
+                                    <span class="badge bg-secondary mt-1" id="cmp-delta-health">Δ --%</span>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="p-2 border rounded bg-light">
+                                    <div class="text-muted small" style="font-size: 0.70rem;">OEE VERİMLİLİK ETKİSİ</div>
+                                    <div class="d-flex justify-content-center align-items-center gap-2 mt-1">
+                                        <span class="h5 mb-0 fw-bold text-muted" id="cmp-live-oee">87.1%</span>
+                                        <i class="fa-solid fa-arrow-right text-muted small"></i>
+                                        <span class="h5 mb-0 fw-bold text-warning" id="cmp-sim-oee">--</span>
+                                    </div>
+                                    <span class="badge bg-secondary mt-1" id="cmp-delta-oee">Δ --%</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tahmini Alarmlar & Tavsiyeler -->
+                        <div class="border rounded p-2 bg-light" style="min-height: 85px;">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <span class="small fw-bold text-dark" style="font-size: 0.75rem;">
+                                    <i class="fa-solid fa-shield-virus text-warning me-1"></i>Olası Risk & Tetiklenecek Alarmlar
+                                </span>
+                                <span class="badge bg-info text-dark" id="whatif-pred-alarm-count" style="font-size: 0.65rem;">0 Tahmini Alarm</span>
+                            </div>
+                            <div id="whatif-recommendations-list" class="small text-muted" style="font-size: 0.75rem;">
+                                Simülasyonu başlatmak için yukarıdaki parametreleri ayarlayıp <b>"Senaryoyu Simüle Et"</b> butonuna tıklayın.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Alarms & Event Timeline Row (GÜN 3: Karar Destek & Olay Günlüğü) -->
             <div class="row g-3 mb-3">
                 <div class="col-lg-6">
@@ -1257,6 +1351,111 @@
         hubConnection.on("ReceiveSystemEvent", function (ev) {
             prependEventToTimeline(ev);
         });
+
+        // What-If / Digital Twin Simulation Functions
+        async function fillWhatIfWithLiveData() {
+            let tempText = document.getElementById('temperature')?.innerText || '42.0';
+            let pressText = document.getElementById('pressure')?.innerText || '4.8';
+            let tempVal = parseFloat(tempText) || 42.0;
+            let pressVal = parseFloat(pressText) || 4.8;
+
+            let sTemp = document.getElementById('slider-whatif-temp');
+            let sPress = document.getElementById('slider-whatif-press');
+            if (sTemp) {
+                sTemp.value = tempVal;
+                document.getElementById('lbl-whatif-temp').innerText = tempVal.toFixed(1) + ' °C';
+            }
+            if (sPress) {
+                sPress.value = pressVal;
+                document.getElementById('lbl-whatif-press').innerText = pressVal.toFixed(1) + ' bar';
+            }
+            runWhatIfSimulation();
+        }
+
+        async function runWhatIfSimulation() {
+            let temp = parseFloat(document.getElementById('slider-whatif-temp')?.value || 85.0);
+            let press = parseFloat(document.getElementById('slider-whatif-press')?.value || 7.5);
+            let speed = parseFloat(document.getElementById('slider-whatif-speed')?.value || 110.0);
+
+            try {
+                let res = await fetch('http://localhost:5000/api/digitaltwin/simulate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        machineId: 1,
+                        targetTemperature: temp,
+                        targetPressure: press,
+                        machineSpeed: speed
+                    })
+                });
+
+                if (res.ok) {
+                    let data = await res.json();
+                    
+                    // Canlı Değerler
+                    document.getElementById('cmp-live-health').innerText = data.currentState.healthScore.toFixed(0) + '%';
+                    document.getElementById('cmp-live-oee').innerText = data.currentState.oeeScore.toFixed(1) + '%';
+
+                    // Simüle Edilen Değerler
+                    let simHealthEl = document.getElementById('cmp-sim-health');
+                    let simOeeEl = document.getElementById('cmp-sim-oee');
+                    simHealthEl.innerText = data.simulatedState.predictedHealthScore.toFixed(0) + '%';
+                    simOeeEl.innerText = data.simulatedState.predictedOeeScore.toFixed(1) + '%';
+
+                    // Delta Rozetleri
+                    let dHealth = data.comparison.healthScoreDelta;
+                    let dHealthEl = document.getElementById('cmp-delta-health');
+                    dHealthEl.innerText = 'Δ ' + (dHealth >= 0 ? '+' : '') + dHealth.toFixed(1) + '%';
+                    dHealthEl.className = dHealth < 0 ? 'badge bg-danger mt-1' : 'badge bg-success mt-1';
+
+                    let dOee = data.comparison.oeeDelta;
+                    let dOeeEl = document.getElementById('cmp-delta-oee');
+                    dOeeEl.innerText = 'Δ ' + (dOee >= 0 ? '+' : '') + dOee.toFixed(1) + '%';
+                    dOeeEl.className = dOee < 0 ? 'badge bg-warning text-dark mt-1' : 'badge bg-success mt-1';
+
+                    // Risk Rozeti
+                    let riskBadge = document.getElementById('whatif-risk-badge');
+                    let risk = data.simulatedState.alarmRiskLevel;
+                    if (risk === 'CRITICAL') {
+                        riskBadge.className = 'badge bg-danger px-3 py-2';
+                        riskBadge.innerHTML = '<i class="fa-solid fa-triangle-exclamation me-1"></i>KRİTİK RİSK!';
+                    } else if (risk === 'HIGH') {
+                        riskBadge.className = 'badge bg-danger px-3 py-2';
+                        riskBadge.innerHTML = '<i class="fa-solid fa-fire-flame-curved me-1"></i>YÜKSEK RİSK';
+                    } else if (risk === 'MEDIUM') {
+                        riskBadge.className = 'badge bg-warning text-dark px-3 py-2';
+                        riskBadge.innerHTML = '<i class="fa-solid fa-triangle-exclamation me-1"></i>ORTA RİSK';
+                    } else {
+                        riskBadge.className = 'badge bg-success px-3 py-2';
+                        riskBadge.innerHTML = '<i class="fa-solid fa-circle-check me-1"></i>GÜVENLİ / DÜŞÜK RİSK';
+                    }
+
+                    // Tahmini Alarmlar & Tavsiyeler
+                    let alarmCountBadge = document.getElementById('whatif-pred-alarm-count');
+                    alarmCountBadge.innerText = (data.predictedAlarms.length || 0) + ' Tahmini Alarm';
+
+                    let recList = document.getElementById('whatif-recommendations-list');
+                    let recHTML = '';
+                    if (data.predictedAlarms && data.predictedAlarms.length > 0) {
+                        recHTML += '<div class="text-danger fw-bold mb-1">';
+                        data.predictedAlarms.forEach(a => {
+                            recHTML += `<div>⚠️ ${a.ruleName} (${a.metric}: ${a.simulatedValue} > ${a.threshold})</div>`;
+                        });
+                        recHTML += '</div>';
+                    }
+                    if (data.comparison.recommendations && data.comparison.recommendations.length > 0) {
+                        recHTML += '<div class="text-dark">';
+                        data.comparison.recommendations.forEach(r => {
+                            recHTML += `<div>• ${r}</div>`;
+                        });
+                        recHTML += '</div>';
+                    }
+                    recList.innerHTML = recHTML;
+                }
+            } catch (err) {
+                console.error("What-If simülasyonu çalıştırılamadı:", err);
+            }
+        }
 
         // Global Shared State Entegrasyonu
         if (window.SharedState) {

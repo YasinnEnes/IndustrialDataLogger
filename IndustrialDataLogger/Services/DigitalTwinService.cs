@@ -387,5 +387,154 @@ namespace IndustrialDataLogger.Services
                 Machines = machinesList
             };
         }
+
+        #region What-If / Digital Twin Simulation Engine
+
+        public async Task<SimulationResultDto> SimulateWhatIfScenarioAsync(SimulationRequestDto request, CancellationToken cancellationToken = default)
+        {
+            int mId = request.MachineId > 0 ? request.MachineId : 1;
+            var liveState = await GetStateAsync(mId, cancellationToken);
+
+            var predictedAlarms = new List<PredictedAlarmDto>();
+
+            // 1. Alarm kurallarını varsayımsal değerlerle sına
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var dbContext = scope.ServiceProvider.GetRequiredService<IndustrialDbContext>();
+                var rules = await dbContext.AlarmRules
+                    .AsNoTracking()
+                    .Where(r => r.Enabled && (r.MachineId == null || r.MachineId == mId))
+                    .ToListAsync(cancellationToken);
+
+                foreach (var rule in rules)
+                {
+                    double testValue = rule.Metric.Equals("Temperature", StringComparison.OrdinalIgnoreCase)
+                        ? request.TargetTemperature
+                        : (rule.Metric.Equals("Pressure", StringComparison.OrdinalIgnoreCase) ? request.TargetPressure : 0.0);
+
+                    if (testValue > 0 && AlarmService.EvaluateCondition(testValue, rule.Operator, rule.Threshold))
+                    {
+                        predictedAlarms.Add(new PredictedAlarmDto
+                        {
+                            RuleName = rule.RuleName,
+                            AlarmType = rule.AlarmType,
+                            Severity = rule.Severity,
+                            Metric = rule.Metric,
+                            SimulatedValue = testValue,
+                            Threshold = rule.Threshold,
+                            Message = $"[Simüle Edilen Alarm] {rule.RuleName}: Değer={testValue:F1} (Eşik: {rule.Threshold:F1})"
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("What-if kural simülasyonunda hata: {Message}", ex.Message);
+            }
+
+            int predWarningCount = predictedAlarms.Count(a => a.Severity == AlarmSeverity.Warning);
+            int predCriticalCount = predictedAlarms.Count(a => a.Severity == AlarmSeverity.Critical);
+
+            // 2. Saf Matematiksel Sağlık Skoru Hesabı
+            var (predScore, predGrade, predBreakdown) = CalculateHealthScore(
+                request.TargetTemperature,
+                request.TargetPressure,
+                PlcConnectionState.Connected,
+                predWarningCount,
+                predCriticalCount);
+
+            // 3. OEE Tahmini
+            double avail = 95.0;
+            if (predCriticalCount > 0 || request.SimulateFailure) avail = 40.0;
+            else if (predWarningCount > 0) avail = 80.0;
+
+            double speedFactor = request.MachineSpeed > 0 ? (request.MachineSpeed / 100.0) : 1.0;
+            double perf = Math.Min(100.0, Math.Max(0.0, speedFactor * 92.5));
+
+            double quality = 99.0;
+            if (request.TargetTemperature > 80.0 || request.TargetPressure > 7.5)
+            {
+                quality = 85.0; // Aşırı ısınma ve yüksek basınçta fire oranı artışı
+            }
+            else if (request.TargetTemperature > 70.0 || request.TargetPressure > 6.0)
+            {
+                quality = 93.0;
+            }
+
+            double predOee = Math.Round((avail * perf * quality) / 10000.0, 1);
+
+            // 4. Risk Seviyesi ve Mühendislik Tavsiyeleri
+            string riskLevel = "LOW";
+            var recommendations = new List<string>();
+
+            if (predCriticalCount > 0 || predScore < 50.0 || request.SimulateFailure)
+            {
+                riskLevel = "CRITICAL";
+                recommendations.Add("Kritik eşikler aşılıyor! Ekipman hasarı ve acil duruş riski çok yüksek.");
+                recommendations.Add("Soğutma ve basınç regülatörlerini maksimum seviyeye getirin veya hedef hızı düşürün.");
+            }
+            else if (predWarningCount > 0 || predScore < 75.0)
+            {
+                riskLevel = "HIGH";
+                recommendations.Add("Uyarı eşikleri tetikleniyor. Sürekli bu rejimde çalışma ekipman ömrünü kısaltır.");
+                recommendations.Add("Termal yükü azaltmak için hat hızını %10-15 düşürmeyi değerlendirin.");
+            }
+            else if (predScore < 90.0)
+            {
+                riskLevel = "MEDIUM";
+                recommendations.Add("Parametreler kabul edilebilir aralıkta ancak nominal değerlerin üzerinde.");
+            }
+            else
+            {
+                riskLevel = "LOW";
+                recommendations.Add("Tüm parametreler güvenli ve nominal aralıkta. World-Class verimlilik bekleniyor.");
+            }
+
+            double currentOee = liveState.Oee?.OverallOee ?? 87.1;
+            double healthDelta = Math.Round(predScore - liveState.HealthScore, 1);
+            double oeeDelta = Math.Round(predOee - currentOee, 1);
+
+            return new SimulationResultDto
+            {
+                MachineId = mId,
+                MachineName = liveState.MachineName,
+                Timestamp = DateTime.UtcNow,
+                CurrentState = new LiveMetricsDto
+                {
+                    Temperature = liveState.Temperature,
+                    Pressure = liveState.Pressure,
+                    HealthScore = liveState.HealthScore,
+                    HealthGrade = liveState.HealthGrade,
+                    OeeScore = currentOee,
+                    ActiveAlarmsCount = liveState.ActiveAlarmCount,
+                    OperationalStatus = liveState.OperationalStatus.ToString()
+                },
+                SimulatedState = new PredictedMetricsDto
+                {
+                    TargetTemperature = request.TargetTemperature,
+                    TargetPressure = request.TargetPressure,
+                    MachineSpeed = request.MachineSpeed,
+                    PredictedHealthScore = predScore,
+                    PredictedHealthGrade = predGrade,
+                    HealthBreakdown = predBreakdown,
+                    PredictedOeeScore = predOee,
+                    PredictedAvailability = Math.Round(avail, 1),
+                    PredictedPerformance = Math.Round(perf, 1),
+                    PredictedQuality = Math.Round(quality, 1),
+                    AlarmRiskLevel = riskLevel
+                },
+                PredictedAlarms = predictedAlarms,
+                Comparison = new SimulationComparisonDto
+                {
+                    HealthScoreDelta = healthDelta,
+                    OeeDelta = oeeDelta,
+                    RiskAssessment = $"{riskLevel} RİSK: Sağlık Skoru {healthDelta:+#0.0;-#0.0;0}%, OEE {oeeDelta:+#0.0;-#0.0;0}%",
+                    Recommendations = recommendations
+                }
+            };
+        }
+
+        #endregion
     }
 }

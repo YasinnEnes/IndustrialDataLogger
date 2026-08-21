@@ -24,6 +24,8 @@ namespace IndustrialDataLogger.Services
 
         Task<PlantOverviewDto> GetPlantOverviewAsync(CancellationToken cancellationToken = default);
 
+        Task<SimulationResultDto> SimulateWhatIfScenarioAsync(SimulationRequestDto request, CancellationToken cancellationToken = default);
+
         (double score, HealthGrade grade, HealthScoreBreakdownDto breakdown) CalculateHealthScore(
             double temperature,
             double pressure,
