@@ -25,7 +25,12 @@ namespace IndustrialDataLogger.Services
         {
             var secret = Environment.GetEnvironmentVariable("JWT_SECRET")
                 ?? _configuration["JwtSettings:Secret"]
-                ?? "IndustrialDataLogger_SuperSecret_Jwt_Key_2026_Production_Secure_Key_998877665544";
+                ?? _configuration["JwtSettings:SecretKey"];
+
+            if (string.IsNullOrWhiteSpace(secret) || secret.Contains("YOUR_SECURE_JWT_SECRET_KEY") || secret.Length < 32)
+            {
+                secret = "IndustrialDataLogger_Development_LocalSecretKey_2026_Min32Chars!";
+            }
 
             var issuer = _configuration["JwtSettings:Issuer"] ?? "IndustrialDataLoggerAPI";
             var audience = _configuration["JwtSettings:Audience"] ?? "IndustrialDataLoggerDashboard";

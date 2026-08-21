@@ -15,8 +15,19 @@ namespace IndustrialDataLogger.Services
             string source = "System",
             CancellationToken cancellationToken = default);
 
+        Task LogEventAsync(
+            string eventType,
+            string description,
+            AlarmSeverity severity,
+            string source,
+            int? machineId,
+            CancellationToken cancellationToken = default);
+
         Task<IReadOnlyList<SystemEventLog>> GetRecentEventsAsync(
             int limit = 50,
+            string? eventType = null,
+            AlarmSeverity? severity = null,
+            int? machineId = null,
             CancellationToken cancellationToken = default);
     }
 }

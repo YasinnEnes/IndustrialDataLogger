@@ -18,12 +18,12 @@ namespace IndustrialDataLogger.Controllers
         }
 
         /// <summary>
-        /// Anlık olarak aktif durumda olan tüm alarmları listeler.
+        /// Anlık olarak aktif durumda olan tüm alarmları listeler (isteğe bağlı makine filtresiyle).
         /// </summary>
         [HttpGet("active")]
-        public async Task<IActionResult> GetActiveAlarms(CancellationToken cancellationToken)
+        public async Task<IActionResult> GetActiveAlarms([FromQuery] int? machineId, CancellationToken cancellationToken)
         {
-            var activeAlarms = await _alarmService.GetActiveAlarmsAsync(cancellationToken);
+            var activeAlarms = await _alarmService.GetActiveAlarmsAsync(machineId, cancellationToken);
             return Ok(activeAlarms);
         }
 
@@ -35,9 +35,10 @@ namespace IndustrialDataLogger.Controllers
             [FromQuery] int limit = 50,
             [FromQuery] AlarmSeverity? severity = null,
             [FromQuery] AlarmStatus? status = null,
+            [FromQuery] int? machineId = null,
             CancellationToken cancellationToken = default)
         {
-            var history = await _alarmService.GetAlarmHistoryAsync(limit, severity, status, cancellationToken);
+            var history = await _alarmService.GetAlarmHistoryAsync(limit, severity, status, machineId, cancellationToken);
             return Ok(history);
         }
 

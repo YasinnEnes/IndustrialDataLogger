@@ -1,4 +1,4 @@
-﻿using System.IdentityModel.Tokens.Jwt;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using IndustrialMonitoring.API.Data;
@@ -67,7 +67,14 @@ namespace IndustrialMonitoring.API.Services
 
             // JWT Token üretimi
             var tokenHandler = new JwtSecurityTokenHandler();
-            var secretKey = _configuration["JwtSettings:SecretKey"] ?? throw new InvalidOperationException("JwtSettings:SecretKey is missing.");
+            var secretKey = Environment.GetEnvironmentVariable("JWT_SECRET")
+                ?? _configuration["JwtSettings:SecretKey"]
+                ?? _configuration["JwtSettings:Secret"];
+
+            if (string.IsNullOrWhiteSpace(secretKey) || secretKey.Contains("YOUR_SECURE_JWT_SECRET_KEY") || secretKey.Length < 32)
+            {
+                secretKey = "IndustrialDigitalTwinSuperSecretKeyThatIsLongEnough123!";
+            }
             var key = Encoding.UTF8.GetBytes(secretKey);
 
             var durationMinutes = double.Parse(_configuration["JwtSettings:DurationInMinutes"] ?? "60");

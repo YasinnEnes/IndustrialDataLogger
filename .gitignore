@@ -25,3 +25,9 @@ bld/
 scratch/
 **/scratch/
 .gemini/
+
+## Environment Variables & Secrets
+.env
+.env.*
+!.env.example
+appsettings*.local.json

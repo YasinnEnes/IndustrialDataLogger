@@ -8,14 +8,14 @@
 [![ASP.NET Core](https://img.shields.io/badge/ASP.NET_Core-Web_API_%26_SignalR-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/apps/aspnet)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Time--Series_Persistence-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose_Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![xUnit](https://img.shields.io/badge/xUnit-15%2F15_Passed-brightgreen)](https://xunit.net/)
+[![xUnit](https://img.shields.io/badge/xUnit-65%2F65_Passed-brightgreen)](https://xunit.net/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 <p align="center">
-  <b>Endüstri 4.0, SCADA ve MES standartlarında; Siemens S7-1200 PLC ile çift yönlü haberleşen, TIA Portal projelerine göre dinamik şekil değiştiren Tag Motoruna (Dynamic Tag & DB Configurator), çoklu veri tipi destekli PLC Komut Paneline (Multi-Type Tag Writer), kural tabanlı Sağlık Skoru (Health Score) ve OEE motoruna sahip, JWT/RBAC korumalı kurumsal Dijital İkiz platformu.</b>
+  <b>Endüstri 4.0, SCADA ve MES standartlarında; Siemens S7-1200 PLC ile çift yönlü haberleşen, Çoklu Makine ve Fabrika Geneli Dijital İkiz (Multi-Machine / Industrial Historian) mimarisine sahip, dinamik TIA Portal Tag Motoruna (Dynamic Tag & DB Configurator), bellek içi önbellekli Konfigüre Edilebilir Kural Motoruna (Configurable Alarm Engine), çoklu veri tipi destekli PLC Komut Paneline, kural tabanlı Sağlık Skoru (Health Score) ve OEE motoruna sahip, JWT/RBAC korumalı kurumsal Dijital İkiz platformu.</b>
 </p>
 
-[Özellikler](#-temel-özellikler) • [TIA Portal Tag Motoru](#-dinamik-tia-portal-tag-motoru) • [Mimari](#-sistem-mimarisi) • [OEE & Sağlık Skoru](#-sağlık-skoru--oee-motoru) • [Güvenlik & RBAC](#-güvenlik-ve-gözlemlenebilirlik) • [Docker Kurulumu](#-docker-ile-hızlı-başlangıç) • [Test Paketi](#-test-paketi--doğrulama) • [CV & Portföy](#-cv--portföy-özeti)
+[Özellikler](#-temel-özellikler) • [Kural Motoru & Alarm Döngüsü](#-konfigüre-edilebilir-alarm-kural-motoru) • [TIA Portal Tag Motoru](#-dinamik-tia-portal-tag-motoru) • [Sistem Mimarisi](#-sistem-mimarisi) • [Sağlık Skoru & OEE](#-sağlık-skoru--oee-motoru) • [Güvenlik & Gözlemlenebilirlik](#-güvenlik-ve-gözlemlenebilirlik) • [Docker Kurulumu](#-docker-ile-hızlı-başlangıç) • [Test Paketi](#-test-paketi--doğrulama) • [CV & Portföy](#-cv--portföy-özeti)
 
 </div>
 
@@ -23,18 +23,74 @@
 
 ## 🌟 Temel Özellikler
 
-- **🔌 Siemens S7-1200 Profinet/S7Comm Sürücüsü:** Gerçek donanım ve 5 farklı arıza senaryosu içeren sanal simülasyon motoru arasında kesintisiz geçiş (Zero Downtime).
+- **🏭 Çoklu Makine & Endüstriyel Historian Mimarisi (Multi-Machine Domain Model):** `Machine` ana tablosu (`Id`, `MachineCode`, `Name`, `Type`, `PlcIp`, `IsActive`) ile ilişkili `sensordata`, `alarmlogs`, `plctagconfigs`, `alarmrules` ve `systemeventlogs` hiyerarşisi; makineye özel telemetri filtreleme ve fabrika geneli birleşik Dijital İkiz (`PlantOverview`) görünümü.
+- **🔌 Siemens S7-1200 Profinet/S7Comm Sürücüsü:** Gerçek endüstriyel donanım ve 5 deterministik arıza senaryosu içeren sanal simülasyon motoru arasında çalışma anında kesintisiz geçiş (**Seamless Simulation Fallback**).
+- **⚙️ Konfigüre Edilebilir Alarm Kural Motoru (Configurable Rule Engine):** Kod içine gömülü if-else mantığı yerine veritabanı destekli, `ReaderWriterLockSlim` ile korunan yüksek performanslı bellek içi önbelleğe sahip dinamik kural motoru. `>`, `>=`, `<`, `<=`, `==`, `!=` operatörleri ve makineye özel eşik tanımları.
 - **🎛️ Dinamik TIA Portal Tag & DB Konfigüratörü (Plug & Play):** Sabit kod bağımlılığını ortadan kaldıran; herhangi bir TIA Portal projesindeki DB blokları ve değişkenleri arayüzden yönetmeyi ve TIA Portal DB metnini yapıştırarak tek tıkla içe aktarmayı (Auto-Parser) sağlayan dinamik altyapı.
-- **✍️ Çoklu Veri Tipi Destekli PLC Değişken Yazıcı (Tag Writer):** `REAL` (Float 32-bit), `BOOL` (Bit 1-bit), `INT` (Short 16-bit), `DINT` (Long 32-bit) ve `STRING` veri tiplerine göre dinamik adapte olan giriş bileşenleri ve komut audit trail günlüğü.
-- **🛡️ Dayanıklı Bağlantı Durum Makinesi (Auto-Reconnect):** Sahadaki ağ kopmalarına karşı **Exponential Backoff** (2s -> 4s -> 8s -> 16s -> 30s) stratejisiyle otomatik toparlanan durum makinesi (`Connected`, `Reconnecting`, `Connecting`, `Disconnected`).
-- **⚡ Sıfır Gecikmeli Telemetri (SignalR WebSockets):** Geleneksel HTTP polling yükünü ortadan kaldıran, yeni PLC verisi okunduğunda istemcilere anında push yapan WebSocket mimarisi.
-- **📊 PostgreSQL Zaman Serisi & EF Core 10:** `sensordata`, `alarmlogs`, `systemeventlogs` ve `plctagconfigs` tabloları üzerinde B-Tree zaman indeksli yüksek performanslı veri kalıcılığı.
-- **🚨 Akıllı Alarm & Olay Yaşam Döngüsü (Alarm Lifecycle):** `NORMAL` ➔ `TRIGGERED` ➔ `ACTIVE` ➔ `ACKNOWLEDGED` ➔ `RESOLVED` akışı ve operatör onaylama sistemi.
+- **✍️ Çoklu Veri Tipi Destekli PLC Değişken Yazıcı (Tag Writer):** `REAL` (Float 32-bit), `BOOL` (Bit 1-bit), `INT` (Short 16-bit), `DINT` (Long 32-bit) ve `STRING` veri tiplerine göre dinamik adapte olan giriş bileşenleri ve komut denetim izi (Audit Trail) günlüğü.
+- **🛡️ Dayanıklı Bağlantı Durum Makinesi (Connection Resilience & Auto-Reconnect):** Sahadaki ağ kopmalarına karşı **Exponential Backoff** ($T = \min(2^{\text{attempt}}, 30\text{s})$) stratejisiyle otomatik toparlanan durum makinesi (`Connected`, `Reconnecting`, `Connecting`, `Disconnecting`, `Disconnected`).
+- **⚡ Düşük Gecikmeli Gerçek Zamanlı Veri Dağıtımı (SignalR Real-Time Push):** Geleneksel HTTP polling yükünü ortadan kaldıran, yeni PLC verisi okunduğunda istemcilere anında push yapan WebSocket mimarisi.
+- **📊 PostgreSQL Zaman Serisi & EF Core 10:** `machines`, `sensordata`, `alarmlogs`, `systemeventlogs`, `alarmrules` ve `plctagconfigs` tabloları üzerinde B-Tree zaman indeksli yüksek performanslı veri kalıcılığı.
+- **🚨 5 Aşamalı Akıllı Alarm Yaşam Döngüsü (Alarm Lifecycle):** $\text{NORMAL} \rightarrow \text{TRIGGERED} \rightarrow \text{ACTIVE} \rightarrow \text{ACKNOWLEDGED} \rightarrow \text{RESOLVED}$ akışı ve operatör onaylama sistemi.
+- **📜 SCADA Olay Günlüğü & Timeline (Event & Audit Logs):** Sistem olaylarının (`PLC_CONNECTED`, `PLC_DISCONNECTED`, `MACHINE_STARTED`, `MACHINE_STOPPED`, `USER_LOGIN`) kategorize edilerek HMI Event Timeline bileşeninde canlı gösterimi.
 - **🩺 Kural Tabanlı Sağlık Skoru (Health Scoring Engine):** Sıcaklık (%25), Basınç (%20), Bağlantı (%20) ve Alarmlar (%35) ağırlıklarıyla 0-100% arası ağırlıklı sağlık puanı (`HEALTHY`, `WARNING`, `DEGRADED`, `CRITICAL`).
 - **🏆 OEE & Üretim Verimliliği Motoru:** Kullanılabilirlik (Availability), Performans (Performance) ve Kalite (Quality) bileşenleriyle dünya standardında OEE ve Çevrim Sayacı (Cycle Count).
-- **🔐 JWT Kimlik Doğrulama & RBAC:** `Admin`, `Programmer`, `Operator` rolleri, 401/403 koruması ve Swagger Bearer Auth desteği.
-- **🔭 Gözlemlenebilirlik (Observability & Health Checks):** `/health` endpoint'i üzerinden API, PostgreSQL, PLC ve Sistem RAM/Uptime izleme.
-- **🐳 Docker & Docker Compose:** Backend ve PostgreSQL servislerini tek komutla (`docker compose up`) ayağa kaldıran konteyner altyapısı.
+- **🔐 JWT Kimlik Doğrulama & RBAC:** `Admin`, `Programmer`, `Operator`, `Viewer` rolleri, 401/403 koruması ve Swagger Bearer Auth desteği.
+- **🔭 Gözlemlenebilirlik (Observability & Health Checks):** `/health` ve `/healthz` endpoint'leri üzerinden API bellek/uptime, PostgreSQL canlı bağlantı ve PLC bağlantı sağlık kontrolleri; mikro saniye hassasiyetli yapılandırılmış loglama (**Structured Logging**).
+- **🐳 Docker & Docker Compose:** Backend, PostgreSQL ve opsiyonel pgAdmin servislerini tek komutla (`docker compose up -d`) ayağa kaldıran çok aşamalı (**Multi-Stage**) konteyner altyapısı.
+
+---
+
+## ⚙️ Konfigüre Edilebilir Alarm Kural Motoru
+
+Sistem, alarmları statik koşullarla değil, çalışma anında konfigüre edilebilen kurallarla değerlendirir:
+
+```mermaid
+flowchart LR
+    subgraph Girdi ["1. Telemetri & Olay Girdisi"]
+        T["SensorData (Temp, Press, ErrorCode)"]
+        P["PLC Connection State"]
+    end
+
+    subgraph Engine ["2. Dinamik Kural Motoru (AlarmService)"]
+        Cache[("In-Memory Rules Cache\nReaderWriterLockSlim")]
+        Eval["Kural Değerlendirici\n(>, >=, <, <=, ==, !=)"]
+        Prioritize["Önceliklendirici\n(Critical > Warning)"]
+    end
+
+    subgraph Lifecycle ["3. Alarm Yaşam Döngüsü"]
+        S1["NORMAL"] -->|Eşik Aşıldı| S2["ACTIVE / TRIGGERED"]
+        S2 -->|Operatör Onayı| S3["ACKNOWLEDGED"]
+        S3 -->|Değer Normale Döndü| S4["RESOLVED"]
+        S2 -->|Otomatik Çözülme| S4
+    end
+
+    subgraph Cikti ["4. Dağıtım & Bildirim"]
+        Hub["SignalR WebSocket Push"]
+        DB[("PostgreSQL alarmlogs")]
+        EventLog["SCADA Event Timeline"]
+    end
+
+    T --> Eval
+    P --> Eval
+    Cache --> Eval
+    Eval --> Prioritize
+    Prioritize --> Lifecycle
+    Lifecycle --> Hub
+    Lifecycle --> DB
+    Lifecycle --> EventLog
+```
+
+### 1. Alarm Kuralı Veri Modeli (`AlarmRule`):
+| Alan | Tip | Açıklama |
+| :--- | :--- | :--- |
+| `MachineId` | `int?` | `null` ise fabrika genelinde, değer varsa sadece o makinede geçerli. |
+| `Metric` | `string` | İzlenen parametre (`Temperature`, `Pressure`, `ErrorCode`, `MachineStatus`). |
+| `Operator` | `ComparisonOperator` | Karşılaştırma tipi (`GreaterThan`, `LessThanOrEqual`, `Equal` vb.). |
+| `Threshold` | `double` | Eşik değeri (Örn: 80.0°C, 8.5 bar). |
+| `Severity` | `AlarmSeverity` | Alarm ciddiyet derecesi (`Warning`, `Critical`). |
+| `AlarmType` | `string` | Alarm tanıtıcısı (`HIGH_TEMPERATURE`, `CRITICAL_PRESSURE`). |
+| `Enabled` | `bool` | Kuralın aktif/pasif durumu. |
 
 ---
 
@@ -68,7 +124,7 @@ flowchart LR
     TagServ --> Dashboard
 ```
 
-### 1. Desteklenen PLC Veri Tipleri & Adresleme:
+### Desteklenen PLC Veri Tipleri & Adresleme:
 | Veri Tipi | S7 Bellek Tipi | Örnek Adres | UI Giriş Bileşeni | Açıklama |
 | :--- | :--- | :--- | :--- | :--- |
 | **`REAL`** | 32-bit Float | `DB1.DBD0` | Ondalıklı Sayı Kutusu (0.1 step) | Sıcaklık, basınç, seviye vb. analog sensörler. |
@@ -85,14 +141,14 @@ flowchart LR
 flowchart TD
     subgraph Saha_Kati [1. Donanım & Simülasyon Katmanı]
         PLC["Siemens S7-1200 PLC\n(IP: 192.168.0.1:102 / DB1)"]
-        MockPLC["Simulation Engine\n(Normal, Overheating, HighPressure, MachineStop, PlcDisconnect)"]
+        MockPLC["Simulation Engine\n(NORMAL, OVERHEATING, HIGH_PRESSURE, MACHINE_STOP, PLC_FAILURE)"]
     end
 
     subgraph Backend_Kati [2. Backend & Engine Katmanı (.NET 10)]
         PlcMgr["IPlcConnectionManager\n(Exponential Backoff & State Machine)"]
         TagEng["ITagConfigService\n(Dinamik DB & Tag Yönetimi)"]
         Worker["Background Worker Service\n(2s Periyodik Örnekleme)"]
-        AlarmEng["IAlarmService\n(Eşik Denetimi & Lifecycle)"]
+        AlarmEng["IAlarmService\n(Bellek İçi Kural Motoru & Lifecycle)"]
         EventEng["IEventLogService\n(Audit & System Event Logs)"]
         TwinEng["IDigitalTwinService\n(Health Scoring & OEE Engine)"]
         AuthEng["IJwtTokenService\n(JWT Bearer & RBAC)"]
@@ -101,11 +157,11 @@ flowchart TD
     end
 
     subgraph Veri_Kati [3. Kalıcılık Katmanı]
-        PG[("PostgreSQL 16\nsensordata + alarmlogs + systemeventlogs + plctagconfigs")]
+        PG[("PostgreSQL 16\nmachines + sensordata + alarmlogs + alarmrules + systemeventlogs + plctagconfigs")]
     end
 
     subgraph Istemci_Kati [4. Operasyonel Arayüz]
-        WebClient["Industrial Operations Dashboard\n- SVG Dijital İkiz Şeması\n- Canlı Telemetri & OEE Paneli\n- TIA Portal Tag Yöneticisi (tags.html)\n- PLC Komut & Yazma Paneli (control.html)\n- Aktif Alarmlar & Event Timeline"]
+        WebClient["Industrial Operations Dashboard\n- SVG Dijital İkiz Şeması\n- Canlı Telemetri & OEE Paneli\n- TIA Portal Tag Yöneticisi (tags.html)\n- PLC Komut & Yazma Paneli (control.html)\n- Aktif Alarmlar & SCADA Event Timeline"]
     end
 
     PLC -->|S7Comm Protocol| PlcMgr
@@ -121,7 +177,7 @@ flowchart TD
     AlarmEng -->|Alarm Event| HubContext
     EventEng -->|System Event| HubContext
     TwinEng -->|Twin State| HubContext
-    HubContext -->|Zero-Polling WebSocket| WebClient
+    HubContext -->|Event-Driven WebSocket| WebClient
 ```
 
 ---
@@ -134,8 +190,8 @@ $$\text{Health Score} = S_{\text{Sıcaklık}} (25p) + S_{\text{Basınç}} (20p) 
 | Skor Aralığı | Derece | Açıklama |
 | :--- | :--- | :--- |
 | **85% – 100%** | `HEALTHY` | Tüm parametreler ve bağlantı optimum seviyede. |
-| **65% – 84%** | `WARNING` | Uyarı seviyesinde sıcaklık/basınç veya alarm mevcut. |
-| **40% – 64%** | `DEGRADED` | Birden fazla alarm veya bağlantı kesintisi. |
+| **65% – 84%** | `WARNING` | Uyarı seviyesinde sıcaklık/basınç veya aktif alarm mevcut. |
+| **40% – 64%** | `DEGRADED` | Birden fazla alarm veya bağlantı kesintisi/kopması. |
 | **0% – 39%** | `CRITICAL` | Kritik sıcaklık/basınç eşiği aşıldı veya makine arızada. |
 
 ### 2. OEE (Overall Equipment Effectiveness)
@@ -151,18 +207,19 @@ $$\text{OEE} = \text{Availability} \times \text{Performance} \times \text{Qualit
 ### 1. JWT & RBAC Rol Matrisi
 | Rol | Kullanıcı | Yetkiler |
 | :--- | :--- | :--- |
-| **Admin** | `admin / admin123` | Tam yetki, PLC komut gönderimi, TIA Portal tag yönetimi, senaryo motoru kontrolü. |
-| **Programmer** | `programmer / prog123` | PLC değişken yazma, TIA Portal DB içe aktarma, simülasyon modu geçişi. |
+| **Admin** | `admin / admin123` | Tam sistem yetkisi, PLC komut gönderimi, tag yönetimi, alarm kuralları yönetimi, senaryo motoru kontrolü. |
+| **Programmer** | `programmer / prog123` | PLC değişken yazma, TIA Portal DB içe aktarma, alarm kural tanımlama, simülasyon modu geçişi. |
 | **Operator** | `operator / op123` | Dashboard izleme, alarm onaylama (`Acknowledge`), grafik filtreleme. |
+| **Viewer** | `viewer / view123` | Salt okunur operasyonel izleme. |
 
-### 2. Gözlemlenebilirlik (`GET /health`)
+### 2. Gözlemlenebilirlik & Health Checks (`GET /health`)
 ```json
 {
   "status": "Healthy",
-  "responseTimeMs": 25,
+  "responseTimeMs": 18,
   "uptime": "1d 4h 12m 30s",
   "components": {
-    "api": { "status": "Healthy", "version": "1.0.0", "framework": ".NET 10.0", "memoryUsageMb": 132.4 },
+    "api": { "status": "Healthy", "version": "1.0.0", "framework": ".NET 10.0", "memoryUsageMb": 128.6 },
     "database": { "status": "Healthy", "provider": "PostgreSQL (Npgsql)" },
     "plc": { "status": "Healthy", "connectionState": "Connected", "scenario": "Normal" },
     "digitalTwin": { "operationalStatus": "Running", "healthScore": 100, "healthGrade": "Healthy" }
@@ -182,50 +239,66 @@ docker compose up -d
 
 # Logları takip et
 docker compose logs -f
+
+# Opsiyonel: pgAdmin ile birlikte başlat
+docker compose --profile tools up -d
 ```
-Dashboard'a erişim: [**http://localhost:5000**](http://localhost:5000)
+- **Web Dashboard:** [**http://localhost:5000**](http://localhost:5000)
+- **Swagger API Dokümantasyonu:** [**http://localhost:5000/swagger**](http://localhost:5000/swagger)
+- **Health Check Endpoint:** [**http://localhost:5000/health**](http://localhost:5000/health)
 
 ---
 
 ## 🧪 Test Paketi & Doğrulama
 
-### 1. xUnit Birim Testlerini Çalıştırma
+### 1. xUnit Birim ve Entegrasyon Testleri (65 Test)
 ```bash
 dotnet test
 ```
-```
+```text
+C:\Users\USER\source\Mini Project\IndustrialDataLogger\IndustrialDataLogger.Tests\bin\Debug\net10.0\IndustrialDataLogger.Tests.dll (.NETCoreApp,Version=v10.0) için test çalıştırması
 Toplam 1 test dosyası belirtilen desenle eşleşti.
-Başarılı! - Başarısız: 0, Başarılı: 15, Atlanan: 0, Toplam: 15 (168 ms)
+
+Başarılı!  - Başarısız:     0, Başarılı:    65, Atlanan:     0, Toplam:    65, Süre: 2 s - IndustrialDataLogger.Tests.dll (net10.0)
 ```
 
-### 2. 7 Adımlı Uçtan Uca Demo Senaryosu
+### 2. Otomatize E2E Test Paketi
 ```bash
-powershell -ExecutionPolicy Bypass -File ".\IndustrialDataLogger\scratch\full_demo_runner.ps1"
+powershell -ExecutionPolicy Bypass -File ".\IndustrialDataLogger\scratch\e2e_test.ps1"
 ```
-```
-[STEP 1/7] JWT Authentication (Admin Login)... -> OK
-[STEP 2/7] PLC Bağlantısı & Normal Senaryo... -> OK
-[STEP 3/7] Aşırı Isınma (Overheating) Senaryosu... -> OK
-[STEP 4/7] Aktif Alarmlar & Olay Günlüğü Kontrolü... -> OK (HIGH_TEMPERATURE Warning)
-[STEP 5/7] Operatör Alarm Onaylama (Acknowledge)... -> OK
-[STEP 6/7] Sıcaklık Düşürme & Alarm Çözümleme... -> OK
-[STEP 7/7] PLC Kopması & Otomatik Yeniden Bağlanma... -> OK
-================================================================================
-   TÜM DEMO SENARYOLARI VE ENTEGRASYON ADIMLARI %100 BAŞARIYLA TAMAMLANDI!
-================================================================================
+```text
+Running: 1. Health Check Endpoint (GET /health)... [PASS]
+Running: 2. Swagger UI (GET /swagger/index.html)... [PASS]
+Running: 3. Auth Login (POST /api/auth/login)... [PASS]
+Running: 4. PLC Status API (GET /api/plc/status)... [PASS]
+Running: 5. PLC Connect API (POST /api/Sensor/connect)... [PASS]
+Running: 6. Simülasyon Senaryosu Ayarla (POST /api/Sensor/scenario)... [PASS]
+Running: 7. Telemetri Okuma (GET /api/Sensor/latest)... [PASS]
+Running: 8. SignalR Hub Negotiation... [PASS]
+Running: 9. Digital Twin Consolidated State... [PASS]
+Running: 10. Alarm Kuralları Listele... [PASS]
+Running: 11. SCADA Event Timeline... [PASS]
+Running: 12. PLC Disconnect Simülasyonu... [PASS]
+Running: 13. PLC Reconnect Simülasyonu... [PASS]
+==========================================================
+ Test Sonucu: 13 Başarılı / 0 Başarısız
+==========================================================
 ```
 
 ---
 
 ## 💼 CV & Portföy Özeti
 
+Teknik mülakatlar ve özgeçmiş için doğrudan kullanılabilecek mühendislik maddeleri:
+
 ```markdown
 - **Siemens S7-1200 Endüstriyel IoT & Dijital İkiz Platformu (.NET 10, C# 13, SignalR, PostgreSQL, Docker):**
-  - Siemens S7-1200 PLC ile S7Comm/Profinet üzerinden çift yönlü haberleşen, ağ kopmalarına karşı **Exponential Backoff State Machine** mimarisine sahip dayanıklı arka plan servisi geliştirdi.
-  - TIA Portal projelerine göre dinamik şekil alan **Dinamik PLC Tag & DB Motoru (Tag Configurator & Auto-Parser)** ve `REAL`, `BOOL`, `INT`, `DINT` tiplerini destekleyen **Çoklu Veri Tipi Değişken Yazıcı** mimarisini kurdu.
+  - Siemens S7-1200 PLC ile S7Comm/Profinet protokolü üzerinden çift yönlü haberleşen, sahadaki ağ kopmalarına karşı **Exponential Backoff State Machine** ($T = \min(2^{\text{attempt}}, 30\text{s})$) mimarisine sahip dayanıklı haberleşme altyapısı kurdu.
+  - Kod içine gömülü statik eşikler yerine veritabanı destekli, `ReaderWriterLockSlim` ile korunan bellek içi önbelleğe sahip **Konfigüre Edilebilir Alarm Kural Motoru (Configurable Rule Engine)** ve 5 aşamalı alarm yaşam döngüsü ($\text{NORMAL} \rightarrow \text{TRIGGERED} \rightarrow \text{ACTIVE} \rightarrow \text{ACKNOWLEDGED} \rightarrow \text{RESOLVED}$) tasarladı.
+  - TIA Portal projelerine göre dinamik şekil alan **Dinamik PLC Tag & DB Motoru (Tag Configurator & Auto-Parser)** ve `REAL`, `BOOL`, `INT`, `DINT`, `STRING` tiplerini destekleyen **Çoklu Veri Tipi Değişken Yazıcı** mimarisini kurdu.
   - Sıcaklık, basınç, bağlantı ve alarm metriklerini ağırlıklandıran **Kural Tabanlı Sağlık Skoru (Health Scoring)** ve **OEE (Overall Equipment Effectiveness)** üretim verimliliği motorunu tasarladı.
-  - Sıfır gecikmeli **SignalR WebSocket** veri boru hattı, **JWT & RBAC** yetkilendirmesi, **ASP.NET Core Health Checks** gözlemlenebilirlik altyapısı ve çok aşamalı **Docker Compose** ortamını kurdu.
-  - xUnit ile 15 birim test ve otomatik uçtan uca demo paketini hayata geçirdi.
+  - Düşük gecikmeli **SignalR WebSocket** veri boru hattı, **JWT & RBAC** yetkilendirmesi, **ASP.NET Core Health Checks** gözlemlenebilirlik altyapısı ve çok aşamalı **Docker Compose** ortamını kurdu.
+  - xUnit ile 65 birim ve uçtan uca entegrasyon testini (%100 başarı) ve otomatize E2E senaryo doğrulama paketini geliştirdi.
 ```
 
 ---

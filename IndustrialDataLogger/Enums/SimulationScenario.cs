@@ -6,6 +6,7 @@ namespace IndustrialDataLogger.Enums
         Overheating = 1,
         HighPressure = 2,
         MachineStop = 3,
-        PlcDisconnect = 4
+        PlcDisconnect = 4,
+        PlcFailure = 4
     }
 }

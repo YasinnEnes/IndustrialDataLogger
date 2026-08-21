@@ -54,11 +54,12 @@ namespace IndustrialDataLogger.Controllers
             return Ok(data);
         }
 
-        // Sprint 2.4 & 2.5: Optimize Edilmiş Historical Data API (Tarih filtreleme, Sayfalama, AsNoTracking)
+        // Sprint 2.4 & 2.5: Optimize Edilmiş Historical Data API (Tarih filtreleme, Sayfalama, Makine Filtreleme, AsNoTracking)
         [HttpGet("history")]
         public async Task<IActionResult> GetHistory(
             [FromQuery] DateTime? startDate,
             [FromQuery] DateTime? endDate,
+            [FromQuery] int? machineId,
             [FromQuery] int limit = 50,
             [FromQuery] int skip = 0,
             [FromQuery] bool? machineStatus = null,
@@ -67,6 +68,11 @@ namespace IndustrialDataLogger.Controllers
             try
             {
                 var query = _dbContext.SensorDataLogs.AsNoTracking();
+
+                if (machineId.HasValue)
+                {
+                    query = query.Where(x => x.MachineId == machineId.Value);
+                }
 
                 if (startDate.HasValue)
                 {
@@ -95,6 +101,7 @@ namespace IndustrialDataLogger.Controllers
                     .Select(x => new
                     {
                         x.Id,
+                        x.MachineId,
                         x.Timestamp,
                         Temperature = Math.Round(x.Temperature, 2),
                         Pressure = Math.Round(x.Pressure, 2),
@@ -117,11 +124,17 @@ namespace IndustrialDataLogger.Controllers
         public async Task<IActionResult> GetHistoryStats(
             [FromQuery] DateTime? startDate,
             [FromQuery] DateTime? endDate,
+            [FromQuery] int? machineId,
             CancellationToken cancellationToken = default)
         {
             try
             {
                 var query = _dbContext.SensorDataLogs.AsNoTracking();
+
+                if (machineId.HasValue)
+                {
+                    query = query.Where(x => x.MachineId == machineId.Value);
+                }
 
                 if (startDate.HasValue)
                 {
@@ -226,12 +239,17 @@ namespace IndustrialDataLogger.Controllers
         }
 
         [HttpPost("scenario")]
-        public IActionResult SetScenario([FromBody] ScenarioRequestModel model)
+        public async Task<IActionResult> SetScenario([FromBody] ScenarioRequestModel model, CancellationToken cancellationToken)
         {
             if (Enum.TryParse<IndustrialDataLogger.Enums.SimulationScenario>(model.Scenario, true, out var scenario))
             {
                 _plcConnectionManager.SetSimulationScenario(scenario);
-                return Ok(new { success = true, scenario = scenario.ToString(), message = $"Simülasyon senaryosu '{scenario}' olarak ayarlandı." });
+                if (scenario == IndustrialDataLogger.Enums.SimulationScenario.PlcDisconnect || scenario == IndustrialDataLogger.Enums.SimulationScenario.PlcFailure)
+                {
+                    await _plcConnectionManager.DisconnectAsync();
+                }
+                await _eventLogService.LogEventAsync("SCENARIO_CHANGED", $"Simülasyon senaryosu '{scenario}' olarak değiştirildi.", IndustrialDataLogger.Enums.AlarmSeverity.Info, "SimulationEngine", cancellationToken);
+                return Ok(new { success = true, scenario = scenario.ToString(), isConnected = _plcConnectionManager.IsConnected, message = $"Simülasyon senaryosu '{scenario}' olarak ayarlandı." });
             }
             return BadRequest(new { success = false, message = $"Geçersiz senaryo: {model.Scenario}. Geçerli senaryolar: {string.Join(", ", Enum.GetNames<IndustrialDataLogger.Enums.SimulationScenario>())}" });
         }
@@ -286,14 +304,12 @@ namespace IndustrialDataLogger.Controllers
             }
         }
 
-
-
         [HttpPost("send-command")]
         public async Task<IActionResult> SendCommand([FromBody] CommandModel model, CancellationToken cancellationToken)
         {
             if (!_plcConnectionManager.IsConnected)
             {
-                return StatusCode(503, new { success = false, message = "PLC bağlantısı yok, komut iletilemez." });
+                return StatusCode(503, new { success = false, message = "PLC bağlantısı kapalı olduğu için komut iletilemez. Lütfen önce PLC bağlantısını kurun." });
             }
 
             string varName = !string.IsNullOrWhiteSpace(model.VariableName) ? model.VariableName.Trim() : "DB1.DBD0";

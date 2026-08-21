@@ -7,8 +7,12 @@ namespace IndustrialDataLogger.Models.DTOs
 {
     public class DigitalTwinStateDto
     {
-        public string MachineId { get; set; } = "PLC-S7-1200-UNIT-01";
+        public int MachineId { get; set; } = 1;
+        public string MachineCode { get; set; } = "PLC-S7-1200-UNIT-01";
         public string MachineName { get; set; } = "Siemens S7-1200 Akıllı Üretim Ünitesi";
+        public string MachineType { get; set; } = "InjectionMolding";
+        public string PlcIp { get; set; } = "192.168.0.1";
+        public bool IsActive { get; set; } = true;
         public double Temperature { get; set; }
         public double Pressure { get; set; }
         public bool MachineStatus { get; set; }

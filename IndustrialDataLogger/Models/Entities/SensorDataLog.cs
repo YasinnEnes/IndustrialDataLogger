@@ -23,6 +23,12 @@ namespace IndustrialDataLogger.Models.Entities
         [Required]
         public bool MachineStatus { get; set; }
 
+        [Column("machineid")]
+        public int MachineId { get; set; } = 1;
+
+        [ForeignKey(nameof(MachineId))]
+        public Machine? Machine { get; set; }
+
         public short ErrorCode { get; set; } = 0;
     }
 }

@@ -30,11 +30,22 @@ namespace IndustrialDataLogger.Services
             _logger = logger;
         }
 
-        public async Task LogEventAsync(
+        public Task LogEventAsync(
             string eventType,
             string description,
             AlarmSeverity severity = AlarmSeverity.Info,
             string source = "System",
+            CancellationToken cancellationToken = default)
+        {
+            return LogEventAsync(eventType, description, severity, source, null, cancellationToken);
+        }
+
+        public async Task LogEventAsync(
+            string eventType,
+            string description,
+            AlarmSeverity severity,
+            string source,
+            int? machineId,
             CancellationToken cancellationToken = default)
         {
             var eventLog = new SystemEventLog
@@ -43,6 +54,7 @@ namespace IndustrialDataLogger.Services
                 Description = description,
                 Severity = severity,
                 Source = source,
+                MachineId = machineId ?? 1,
                 Timestamp = DateTime.UtcNow
             };
 
@@ -64,6 +76,7 @@ namespace IndustrialDataLogger.Services
                 await _hubContext.Clients.All.SendAsync("ReceiveSystemEvent", new
                 {
                     id = eventLog.Id,
+                    machineId = eventLog.MachineId,
                     eventType = eventLog.EventType,
                     description = eventLog.Description,
                     severity = eventLog.Severity.ToString(),
@@ -76,21 +89,41 @@ namespace IndustrialDataLogger.Services
                 _logger.LogWarning("Sistem olayı SignalR yayını yapılırken hata: {Message}", ex.Message);
             }
 
-            _logger.LogInformation("[SİSTEM OLAYI] [{Severity}] {EventType} ({Source}): {Description}", severity, eventType, source, description);
+            _logger.LogInformation("[SİSTEM OLAYI] [{Severity}] {EventType} ({Source}) [Makine #{MachineId}]: {Description}", severity, eventType, source, eventLog.MachineId, description);
         }
 
         public async Task<IReadOnlyList<SystemEventLog>> GetRecentEventsAsync(
             int limit = 50,
+            string? eventType = null,
+            AlarmSeverity? severity = null,
+            int? machineId = null,
             CancellationToken cancellationToken = default)
         {
             try
             {
                 using var scope = _scopeFactory.CreateScope();
                 var dbContext = scope.ServiceProvider.GetRequiredService<IndustrialDbContext>();
-                return await dbContext.SystemEvents
-                    .AsNoTracking()
+
+                var query = dbContext.SystemEvents.AsNoTracking();
+
+                if (!string.IsNullOrWhiteSpace(eventType))
+                {
+                    query = query.Where(e => e.EventType == eventType);
+                }
+
+                if (severity.HasValue)
+                {
+                    query = query.Where(e => e.Severity == severity.Value);
+                }
+
+                if (machineId.HasValue)
+                {
+                    query = query.Where(e => e.MachineId == machineId.Value);
+                }
+
+                return await query
                     .OrderByDescending(e => e.Timestamp)
-                    .Take(limit)
+                    .Take(Math.Clamp(limit, 1, 500))
                     .ToListAsync(cancellationToken);
             }
             catch (Exception ex)

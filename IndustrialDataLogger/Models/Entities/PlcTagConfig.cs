@@ -16,6 +16,12 @@ namespace IndustrialDataLogger.Models.Entities
         [Column("tagname")]
         public string TagName { get; set; } = string.Empty;
 
+        [Column("machineid")]
+        public int MachineId { get; set; } = 1;
+
+        [ForeignKey(nameof(MachineId))]
+        public Machine? Machine { get; set; }
+
         [Column("dbnumber")]
         public int DbNumber { get; set; } = 1;
 

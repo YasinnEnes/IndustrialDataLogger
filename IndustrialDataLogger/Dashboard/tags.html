@@ -475,13 +475,13 @@ MachineStatus : Bool;"></textarea>
                     bootstrap.Modal.getInstance(document.getElementById('importModal')).hide();
                     showFeedback(data.message || "Değişkenler başarıyla içe aktarıldı.", true);
                     fetchTags();
-                } else {
-                    alert(data.message || "Ayrıştırma başarısız oldu.");
-                }
-            } catch (e) {
-                alert("Sunucuya bağlanılamadı.");
-            }
-        }
+    <!-- SignalR & Shared State Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script>
+    <script src="shared-state.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (window.SharedState) window.SharedState.init();
+        });
     </script>
 </body>
 </html>

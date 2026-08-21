@@ -121,8 +121,8 @@ namespace IndustrialDataLogger.Services
             CurrentState = PlcConnectionState.Disconnecting;
             _logger.LogInformation("PLC bağlantısı tamamen kesiliyor...");
 
-            await _mockPlcService.DisconnectAsync();
-            await _realPlcService.DisconnectAsync();
+            if (_mockPlcService != null) await _mockPlcService.DisconnectAsync();
+            if (_realPlcService != null) await _realPlcService.DisconnectAsync();
 
             CurrentState = PlcConnectionState.Disconnected;
             _logger.LogInformation("PLC bağlantısı kapatıldı. Durum: Disconnected.");

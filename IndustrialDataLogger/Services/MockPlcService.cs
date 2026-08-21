@@ -48,12 +48,12 @@ namespace IndustrialDataLogger.Services
                 _isMachineRunning = false;
                 IsConnected = true;
             }
-            else if (scenario == SimulationScenario.PlcDisconnect)
+            else if (scenario == SimulationScenario.PlcDisconnect || scenario == SimulationScenario.PlcFailure)
             {
                 IsConnected = false;
             }
 
-            Console.WriteLine($"[MOCK PLC] Simülasyon Senaryosu Değiştirildi: {scenario}");
+            Console.WriteLine($"[MOCK PLC] Simülasyon Senaryosu Değiştirildi: {scenario} (IsConnected={IsConnected})");
         }
 
         public void Connect()
@@ -143,16 +143,20 @@ namespace IndustrialDataLogger.Services
 
         public async Task<bool> WriteDataAsync(PlcWriteRequest request, CancellationToken cancellationToken = default)
         {
+            if (!IsConnected || CurrentScenario == SimulationScenario.PlcDisconnect || CurrentScenario == SimulationScenario.PlcFailure)
+            {
+                Console.WriteLine("[MOCK PLC] Hata: PLC çevrimdışı olduğu için veri yazılamadı.");
+                return false;
+            }
+
             Console.WriteLine($"[MOCK PLC] Adres: {request?.VariableName} | Değer: {request?.Value}");
-            await Task.Delay(100, cancellationToken);
+            await Task.Delay(50, cancellationToken);
             return true;
         }
 
         public async Task<bool> WriteDataAsync(string variableName, object value, CancellationToken cancellationToken = default)
         {
-            Console.WriteLine($"[MOCK PLC] Adres: {variableName} | Değer: {value}");
-            await Task.Delay(100, cancellationToken);
-            return true;
+            return await WriteDataAsync(new PlcWriteRequest { VariableName = variableName, Value = value }, cancellationToken);
         }
     }
 }

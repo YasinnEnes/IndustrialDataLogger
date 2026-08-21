@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -21,6 +22,7 @@ namespace IndustrialDataLogger.Services
         private readonly ILogger<DigitalTwinService> _logger;
         private readonly object _stateLock = new object();
 
+        private readonly ConcurrentDictionary<int, DigitalTwinStateDto> _machineStates = new();
         private DigitalTwinStateDto _cachedState = new DigitalTwinStateDto();
 
         public DigitalTwinService(
@@ -31,6 +33,7 @@ namespace IndustrialDataLogger.Services
             _alarmService = alarmService;
             _scopeFactory = scopeFactory;
             _logger = logger;
+            _machineStates[1] = _cachedState;
         }
 
         public (double score, HealthGrade grade, HealthScoreBreakdownDto breakdown) CalculateHealthScore(
@@ -153,13 +156,23 @@ namespace IndustrialDataLogger.Services
             return machineStatus ? MachineOperationalStatus.Running : MachineOperationalStatus.Stopped;
         }
 
-        public async Task<DigitalTwinStateDto> UpdateStateAsync(
+        public Task<DigitalTwinStateDto> UpdateStateAsync(
             SensorData? sensorData,
             PlcConnectionState connectionState,
             CancellationToken cancellationToken = default)
         {
+            int machineId = sensorData?.MachineId ?? 1;
+            return UpdateStateAsync(sensorData, connectionState, machineId, cancellationToken);
+        }
+
+        public async Task<DigitalTwinStateDto> UpdateStateAsync(
+            SensorData? sensorData,
+            PlcConnectionState connectionState,
+            int machineId,
+            CancellationToken cancellationToken = default)
+        {
             bool isConnected = connectionState == PlcConnectionState.Connected;
-            var activeAlarms = await _alarmService.GetActiveAlarmsAsync(cancellationToken);
+            var activeAlarms = await _alarmService.GetActiveAlarmsAsync(machineId, cancellationToken);
 
             int warningCount = activeAlarms.Count(a => a.Severity == AlarmSeverity.Warning);
             int criticalCount = activeAlarms.Count(a => a.Severity == AlarmSeverity.Critical);
@@ -172,10 +185,43 @@ namespace IndustrialDataLogger.Services
             var (score, grade, breakdown) = CalculateHealthScore(temp, press, connectionState, warningCount, criticalCount);
             var opStatus = DetermineOperationalStatus(isConnected, connectionState, machineStatus, errorCode, criticalCount);
 
+            string machineCode = "PLC-S7-1200-UNIT-01";
+            string machineName = "Siemens S7-1200 Akıllı Üretim Ünitesi";
+            string machineType = "InjectionMolding";
+            string plcIp = "192.168.0.1";
+            bool isActive = true;
+
+            // DB'den makine bilgilerini ve istatistikleri getir
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var dbContext = scope.ServiceProvider.GetService<IndustrialDbContext>();
+                if (dbContext != null)
+                {
+                    var machineEntity = await dbContext.Machines.AsNoTracking().FirstOrDefaultAsync(m => m.Id == machineId, cancellationToken);
+                    if (machineEntity != null)
+                    {
+                        machineCode = machineEntity.MachineCode;
+                        machineName = machineEntity.Name;
+                        machineType = machineEntity.Type;
+                        plcIp = machineEntity.PlcIp;
+                        isActive = machineEntity.IsActive;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Makine bilgileri alınırken hata: {Message}", ex.Message);
+            }
+
             var state = new DigitalTwinStateDto
             {
-                MachineId = "PLC-S7-1200-UNIT-01",
-                MachineName = "Siemens S7-1200 Akıllı Üretim Ünitesi",
+                MachineId = machineId,
+                MachineCode = machineCode,
+                MachineName = machineName,
+                MachineType = machineType,
+                PlcIp = plcIp,
+                IsActive = isActive,
                 Temperature = Math.Round(temp, 2),
                 Pressure = Math.Round(press, 2),
                 MachineStatus = machineStatus,
@@ -198,20 +244,21 @@ namespace IndustrialDataLogger.Services
                 var dbContext = scope.ServiceProvider.GetService<IndustrialDbContext>();
                 if (dbContext != null)
                 {
-                    var count = await dbContext.SensorDataLogs.AsNoTracking().LongCountAsync(cancellationToken);
+                    var query = dbContext.SensorDataLogs.AsNoTracking().Where(x => x.MachineId == machineId);
+                    var count = await query.LongCountAsync(cancellationToken);
                     state.TotalLogCount = count;
 
                     if (count > 0)
                     {
-                        state.TemperatureMin = await dbContext.SensorDataLogs.AsNoTracking().MinAsync(x => x.Temperature, cancellationToken);
-                        state.TemperatureMax = await dbContext.SensorDataLogs.AsNoTracking().MaxAsync(x => x.Temperature, cancellationToken);
-                        state.TemperatureAvg = Math.Round(await dbContext.SensorDataLogs.AsNoTracking().AverageAsync(x => x.Temperature, cancellationToken), 2);
+                        state.TemperatureMin = await query.MinAsync(x => x.Temperature, cancellationToken);
+                        state.TemperatureMax = await query.MaxAsync(x => x.Temperature, cancellationToken);
+                        state.TemperatureAvg = Math.Round(await query.AverageAsync(x => x.Temperature, cancellationToken), 2);
 
-                        state.PressureMin = await dbContext.SensorDataLogs.AsNoTracking().MinAsync(x => x.Pressure, cancellationToken);
-                        state.PressureMax = await dbContext.SensorDataLogs.AsNoTracking().MaxAsync(x => x.Pressure, cancellationToken);
-                        state.PressureAvg = Math.Round(await dbContext.SensorDataLogs.AsNoTracking().AverageAsync(x => x.Pressure, cancellationToken), 2);
+                        state.PressureMin = await query.MinAsync(x => x.Pressure, cancellationToken);
+                        state.PressureMax = await query.MaxAsync(x => x.Pressure, cancellationToken);
+                        state.PressureAvg = Math.Round(await query.AverageAsync(x => x.Pressure, cancellationToken), 2);
 
-                        long runningCount = await dbContext.SensorDataLogs.AsNoTracking().CountAsync(x => x.MachineStatus, cancellationToken);
+                        long runningCount = await query.CountAsync(x => x.MachineStatus, cancellationToken);
                         state.MachineRunningRatio = Math.Round((double)runningCount / count * 100, 2);
                     }
                 }
@@ -247,6 +294,7 @@ namespace IndustrialDataLogger.Services
             lock (_stateLock)
             {
                 _cachedState = state;
+                _machineStates[machineId] = state;
             }
 
             return state;
@@ -254,10 +302,90 @@ namespace IndustrialDataLogger.Services
 
         public Task<DigitalTwinStateDto> GetStateAsync(CancellationToken cancellationToken = default)
         {
+            return GetStateAsync(1, cancellationToken);
+        }
+
+        public Task<DigitalTwinStateDto> GetStateAsync(int machineId, CancellationToken cancellationToken = default)
+        {
             lock (_stateLock)
             {
+                if (_machineStates.TryGetValue(machineId, out var state))
+                {
+                    return Task.FromResult(state);
+                }
                 return Task.FromResult(_cachedState);
             }
+        }
+
+        public async Task<PlantOverviewDto> GetPlantOverviewAsync(CancellationToken cancellationToken = default)
+        {
+            var machinesList = new List<DigitalTwinStateDto>();
+
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var dbContext = scope.ServiceProvider.GetService<IndustrialDbContext>();
+                if (dbContext != null)
+                {
+                    var machines = await dbContext.Machines.AsNoTracking().Where(m => m.IsActive).ToListAsync(cancellationToken);
+                    foreach (var m in machines)
+                    {
+                        var state = await GetStateAsync(m.Id, cancellationToken);
+                        if (state.MachineId != m.Id)
+                        {
+                            state = new DigitalTwinStateDto
+                            {
+                                MachineId = m.Id,
+                                MachineCode = m.MachineCode,
+                                MachineName = m.Name,
+                                MachineType = m.Type,
+                                PlcIp = m.PlcIp,
+                                IsActive = m.IsActive,
+                                OperationalStatus = MachineOperationalStatus.Offline,
+                                HealthScore = 100.0,
+                                HealthGrade = HealthGrade.Healthy
+                            };
+                        }
+                        machinesList.Add(state);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Fabrika özeti oluşturulurken hata: {Message}", ex.Message);
+            }
+
+            if (machinesList.Count == 0)
+            {
+                lock (_stateLock)
+                {
+                    machinesList.Add(_cachedState);
+                }
+            }
+
+            int total = machinesList.Count;
+            int active = machinesList.Count(m => m.IsActive);
+            int running = machinesList.Count(m => m.OperationalStatus == MachineOperationalStatus.Running);
+            int fault = machinesList.Count(m => m.OperationalStatus == MachineOperationalStatus.Fault);
+            int offline = machinesList.Count(m => m.OperationalStatus == MachineOperationalStatus.Offline);
+            double avgHealth = total > 0 ? Math.Round(machinesList.Average(m => m.HealthScore), 1) : 100.0;
+            double avgOee = total > 0 ? Math.Round(machinesList.Average(m => m.Oee?.OverallOee ?? 0), 1) : 0.0;
+            int totalAlarms = machinesList.Sum(m => m.ActiveAlarmCount);
+
+            return new PlantOverviewDto
+            {
+                PlantName = "Industrial Smart Factory Line 1",
+                Timestamp = DateTime.UtcNow,
+                TotalMachines = total,
+                ActiveMachines = active,
+                RunningMachines = running,
+                FaultedMachines = fault,
+                OfflineMachines = offline,
+                AverageHealthScore = avgHealth,
+                AverageOee = avgOee,
+                TotalActiveAlarms = totalAlarms,
+                Machines = machinesList
+            };
         }
     }
 }

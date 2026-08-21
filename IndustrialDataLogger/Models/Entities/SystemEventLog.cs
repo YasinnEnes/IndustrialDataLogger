@@ -26,6 +26,12 @@ namespace IndustrialDataLogger.Models.Entities
         [MaxLength(100)]
         public string Source { get; set; } = "System";
 
+        [Column("machineid")]
+        public int? MachineId { get; set; } = 1;
+
+        [ForeignKey(nameof(MachineId))]
+        public Machine? Machine { get; set; }
+
         [Required]
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     }

@@ -18,20 +18,27 @@ namespace IndustrialDataLogger.Controllers
         }
 
         /// <summary>
-        /// Son sistem ve alarm olaylarını kronolojik sırayla döner.
+        /// Son sistem ve audit olaylarını filtrelenmiş ve kronolojik sırayla döner.
         /// </summary>
         [HttpGet("recent")]
-        public async Task<IActionResult> GetRecentEvents([FromQuery] int limit = 30, CancellationToken cancellationToken = default)
+        public async Task<IActionResult> GetRecentEvents(
+            [FromQuery] int limit = 30,
+            [FromQuery] string? eventType = null,
+            [FromQuery] AlarmSeverity? severity = null,
+            [FromQuery] int? machineId = null,
+            CancellationToken cancellationToken = default)
         {
-            var events = await _eventLogService.GetRecentEventsAsync(limit, cancellationToken);
+            var events = await _eventLogService.GetRecentEventsAsync(limit, eventType, severity, machineId, cancellationToken);
             return Ok(events);
         }
 
         /// <summary>
-        /// Özel bir sistem olayı kaydeder (Örn: Kullanıcı girişi veya manuel kontrol).
+        /// Özel bir sistem/audit olayı kaydeder (Örn: Kullanıcı girişi, reçete değişikliği veya manuel kontrol).
         /// </summary>
         [HttpPost("log")]
-        public async Task<IActionResult> LogCustomEvent([FromBody] CustomEventRequest request, CancellationToken cancellationToken = default)
+        public async Task<IActionResult> LogCustomEvent(
+            [FromBody] CustomEventRequest request,
+            CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(request.EventType) || string.IsNullOrWhiteSpace(request.Description))
             {
@@ -43,6 +50,7 @@ namespace IndustrialDataLogger.Controllers
                 request.Description,
                 request.Severity,
                 request.Source ?? "UserAction",
+                request.MachineId,
                 cancellationToken);
 
             return Ok(new { success = true, message = "Olay başarıyla kaydedildi." });
@@ -55,5 +63,6 @@ namespace IndustrialDataLogger.Controllers
         public string Description { get; set; } = string.Empty;
         public AlarmSeverity Severity { get; set; } = AlarmSeverity.Info;
         public string? Source { get; set; } = "UserAction";
+        public int? MachineId { get; set; }
     }
 }

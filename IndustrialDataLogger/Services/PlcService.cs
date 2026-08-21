@@ -17,9 +17,18 @@ namespace IndustrialDataLogger.Services
         public PlcService(IConfiguration configuration, ILogger<PlcService> logger)
         {
             _logger = logger;
-            var ip = configuration["PlcSettings:IpAddress"] ?? "192.168.0.1";
-            var rack = short.Parse(configuration["PlcSettings:Rack"] ?? "0");
-            var slot = short.Parse(configuration["PlcSettings:Slot"] ?? "1");
+            var ip = Environment.GetEnvironmentVariable("PLC_IP_ADDRESS")
+                ?? configuration["PlcSettings:IpAddress"]
+                ?? "192.168.0.1";
+            var rackStr = Environment.GetEnvironmentVariable("PLC_RACK")
+                ?? configuration["PlcSettings:Rack"]
+                ?? "0";
+            var slotStr = Environment.GetEnvironmentVariable("PLC_SLOT")
+                ?? configuration["PlcSettings:Slot"]
+                ?? "1";
+
+            var rack = short.TryParse(rackStr, out var r) ? r : (short)0;
+            var slot = short.TryParse(slotStr, out var s) ? s : (short)1;
 
             _plc = new Plc(CpuType.S71200, ip, rack, slot);
         }

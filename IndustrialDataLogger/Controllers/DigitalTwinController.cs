@@ -21,9 +21,9 @@ namespace IndustrialDataLogger.Controllers
         /// Tüm dijital ikiz durumunu (sensörler, makine operasyonel durumu, sağlık skoru, alarmlar, KPI istatistikleri) tek bir modelde döner.
         /// </summary>
         [HttpGet("state")]
-        public async Task<IActionResult> GetDigitalTwinState(CancellationToken cancellationToken)
+        public async Task<IActionResult> GetDigitalTwinState([FromQuery] int machineId = 1, CancellationToken cancellationToken = default)
         {
-            var state = await _digitalTwinService.GetStateAsync(cancellationToken);
+            var state = await _digitalTwinService.GetStateAsync(machineId, cancellationToken);
             return Ok(state);
         }
 
@@ -31,18 +31,30 @@ namespace IndustrialDataLogger.Controllers
         /// Makinenin kural tabanlı sağlık skorunu ve 4 bileşenli (sıcaklık, basınç, bağlantı, alarm) puan kırılımını döner.
         /// </summary>
         [HttpGet("health")]
-        public async Task<IActionResult> GetMachineHealth(CancellationToken cancellationToken)
+        public async Task<IActionResult> GetMachineHealth([FromQuery] int machineId = 1, CancellationToken cancellationToken = default)
         {
-            var state = await _digitalTwinService.GetStateAsync(cancellationToken);
+            var state = await _digitalTwinService.GetStateAsync(machineId, cancellationToken);
             return Ok(new
             {
                 machineId = state.MachineId,
+                machineCode = state.MachineCode,
+                machineName = state.MachineName,
                 operationalStatus = state.OperationalStatus.ToString(),
                 healthScore = state.HealthScore,
                 healthGrade = state.HealthGrade.ToString(),
                 breakdown = state.HealthBreakdown,
                 lastUpdate = state.LastUpdate
             });
+        }
+
+        /// <summary>
+        /// Fabrika geneli tüm makinelerin durumunu ve aggregate KPI özetini döner.
+        /// </summary>
+        [HttpGet("plant-overview")]
+        public async Task<IActionResult> GetPlantOverview(CancellationToken cancellationToken = default)
+        {
+            var overview = await _digitalTwinService.GetPlantOverviewAsync(cancellationToken);
+            return Ok(overview);
         }
     }
 }

@@ -33,6 +33,12 @@ namespace IndustrialDataLogger.Models.Entities
         [Required]
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+        [Column("machineid")]
+        public int MachineId { get; set; } = 1;
+
+        [ForeignKey(nameof(MachineId))]
+        public Machine? Machine { get; set; }
+
         public DateTime? ResolvedAt { get; set; }
 
         public DateTime? AcknowledgedAt { get; set; }

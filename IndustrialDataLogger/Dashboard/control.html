@@ -118,13 +118,16 @@
                     <a href="tags.html" class="btn btn-outline-secondary btn-sm d-flex align-items-center">
                         <i class="fa-solid fa-gear me-1"></i> Değişkenleri Yönet (TIA Tag Manager)
                     </a>
-                    <span class="badge bg-success p-2 px-3 rounded-pill" id="plc-status-pill">
-                        <i class="fa-solid fa-plug me-1"></i> PLC Çevrimiçi
+                    <span class="badge bg-secondary p-2 px-3 rounded-pill" id="plc-status-pill">
+                        <i class="fa-solid fa-spinner fa-spin me-1"></i> Bağlantı Kontrol Ediliyor...
                     </span>
                 </div>
             </div>
 
-            <div id="status-alert" class="alert d-none shadow-sm mb-4" role="alert"></div>
+            <div id="status-alert" class="alert d-none shadow-sm mb-3" role="alert"></div>
+            <div id="command-guard-notice" class="alert alert-warning d-none shadow-sm mb-3" role="alert">
+                <i class="fa-solid fa-lock me-2 text-warning"></i><b>PLC Çevrimdışı:</b> Güvenlik kilidi aktif. Komut göndermek için lütfen önce PLC bağlantısını kurun.
+            </div>
 
             <div class="row g-4">
                 <!-- Komut Gönderim Alanı -->
@@ -274,11 +277,34 @@
         </div>
     </div>
 
+    <!-- SignalR & Global Shared State Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script>
+    <script src="shared-state.js"></script>
+
     <script>
         const roleSpan = document.getElementById('user-role-text');
         if (roleSpan && userRole) roleSpan.innerText = userRole;
 
         const commandHistory = [];
+
+        // Global State & Command Guard Başlatma
+        document.addEventListener('DOMContentLoaded', () => {
+            if (window.SharedState) {
+                window.SharedState.init();
+                window.SharedState.onPlcConnectionChanged((isConnected, stateName) => {
+                    const statusPill = document.getElementById('plc-status-pill');
+                    if (statusPill) {
+                        if (isConnected) {
+                            statusPill.className = 'badge bg-success p-2 px-3 rounded-pill';
+                            statusPill.innerHTML = '<i class="fa-solid fa-plug me-1"></i> PLC Çevrimiçi (' + (stateName || 'Connected') + ')';
+                        } else {
+                            statusPill.className = 'badge bg-danger p-2 px-3 rounded-pill';
+                            statusPill.innerHTML = '<i class="fa-solid fa-plug-circle-xmark me-1"></i> PLC Çevrimdışı (' + (stateName || 'Disconnected') + ')';
+                        }
+                    }
+                });
+            }
+        });
 
         function logout() {
             sessionStorage.clear();
@@ -428,6 +454,7 @@
                     showFeedback(`Senaryo başarıyla '${scenarioName}' olarak değiştirildi.`, true);
                     let el = document.getElementById('active-scenario-text');
                     if (el) el.innerText = scenarioName;
+                    if (window.SharedState) window.SharedState.pollConnectionStatus();
                 } else {
                     showFeedback(data.message || "Senaryo değiştirilemedi!", false);
                 }
@@ -438,6 +465,11 @@
 
         // 5. Veri Tipine Göre PLC Komut Gönderme
         async function sendPlcCommand() {
+            if (window.SharedState && !window.SharedState.isPlcConnected) {
+                showFeedback("Güvenlik Kilidi: PLC çevrimdışı olduğu için komut gönderilemez.", false);
+                return;
+            }
+
             const varAddr = document.getElementById('variableAddress').value.trim();
             const dataType = document.getElementById('dataTypeSelect').value;
             const btn = document.getElementById('btnSendCommand');
@@ -489,6 +521,7 @@
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fa-solid fa-paper-plane me-2"></i>Komutu PLC\'ye İlet';
+                if (window.SharedState) window.SharedState.applyCommandGuard(window.SharedState.isPlcConnected);
             }
         }
 

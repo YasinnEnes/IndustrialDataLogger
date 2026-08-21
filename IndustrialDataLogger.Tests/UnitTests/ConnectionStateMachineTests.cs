@@ -1,5 +1,8 @@
 using System;
+using System.Threading.Tasks;
 using IndustrialDataLogger.Enums;
+using IndustrialDataLogger.Services;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace IndustrialDataLogger.Tests.UnitTests
@@ -23,7 +26,7 @@ namespace IndustrialDataLogger.Tests.UnitTests
         [Fact]
         public void StateMachine_TransitionsShouldFollowIndustryLifecycle()
         {
-            // Disconnected -> Connecting -> Connected -> Reconnecting -> Connected
+            // Disconnected -> Connecting -> Connected -> Reconnecting -> Connected -> Disconnected
             var state = PlcConnectionState.Disconnected;
             Assert.Equal(PlcConnectionState.Disconnected, state);
 
@@ -38,6 +41,58 @@ namespace IndustrialDataLogger.Tests.UnitTests
 
             state = PlcConnectionState.Connected;
             Assert.Equal(PlcConnectionState.Connected, state);
+
+            state = PlcConnectionState.Disconnecting;
+            Assert.Equal(PlcConnectionState.Disconnecting, state);
+
+            state = PlcConnectionState.Disconnected;
+            Assert.Equal(PlcConnectionState.Disconnected, state);
+        }
+
+        [Fact]
+        public async Task PlcConnectionManager_ShouldStartDisconnectedAndConnectSuccessfully()
+        {
+            // Arrange
+            var mockPlc = new MockPlcService();
+            var manager = new PlcConnectionManager(null!, mockPlc, NullLogger<PlcConnectionManager>.Instance);
+
+            // Assert Initial State
+            Assert.Equal(PlcConnectionState.Disconnected, manager.CurrentState);
+            Assert.False(manager.IsConnected);
+
+            // Act: Connect
+            var connected = await manager.ConnectAsync();
+
+            // Assert Connected State
+            Assert.True(connected);
+            Assert.Equal(PlcConnectionState.Connected, manager.CurrentState);
+            Assert.True(manager.IsConnected);
+
+            // Act: Disconnect
+            await manager.DisconnectAsync();
+
+            // Assert Disconnected State
+            Assert.Equal(PlcConnectionState.Disconnected, manager.CurrentState);
+            Assert.False(manager.IsConnected);
+        }
+
+        [Fact]
+        public async Task PlcConnectionManager_SetMode_ShouldSwitchSimulationModeCleanly()
+        {
+            // Arrange
+            var mockPlc = new MockPlcService();
+            var manager = new PlcConnectionManager(null!, mockPlc, NullLogger<PlcConnectionManager>.Instance);
+
+            // Act
+            await manager.SetModeAsync(true);
+            Assert.True(PlcConnectionManager.IsSimulationMode);
+
+            await manager.SetModeAsync(false);
+            Assert.False(PlcConnectionManager.IsSimulationMode);
+
+            // Reset back to true
+            await manager.SetModeAsync(true);
+            Assert.True(PlcConnectionManager.IsSimulationMode);
         }
     }
 }

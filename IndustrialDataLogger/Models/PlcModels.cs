@@ -4,6 +4,7 @@ namespace IndustrialDataLogger.Models
 {
     public class SensorData
     {
+        public int MachineId { get; set; } = 1;
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;
         public double Temperature { get; set; }
         public double Pressure { get; set; }

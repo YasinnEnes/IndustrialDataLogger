@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
+    <script src="shared-state.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 
     <script>
@@ -229,7 +230,7 @@
             <!-- Metric & Health Cards Row (GÜN 2: 4 Kartlı Bütünleşik Görünüm) -->
             <div class="row g-3 mb-4">
                 <div class="col-xl-3 col-md-6">
-                    <div class="card card-custom p-3 h-100">
+                    <div class="card card-custom p-3 h-100 live-metric-card">
                         <div class="d-flex justify-content-between align-items-center">
                             <span class="text-muted small fw-bold">ANLIK SICAKLIK</span>
                             <i class="fa-solid fa-temperature-three-quarters text-danger"></i>
@@ -244,7 +245,7 @@
                 </div>
 
                 <div class="col-xl-3 col-md-6">
-                    <div class="card card-custom p-3 h-100">
+                    <div class="card card-custom p-3 h-100 live-metric-card">
                         <div class="d-flex justify-content-between align-items-center">
                             <span class="text-muted small fw-bold">ANLIK BASINÇ</span>
                             <i class="fa-solid fa-gauge-high text-primary"></i>
@@ -259,7 +260,7 @@
                 </div>
 
                 <div class="col-xl-3 col-md-6">
-                    <div class="card card-custom p-3 h-100">
+                    <div class="card card-custom p-3 h-100 live-metric-card">
                         <div class="d-flex justify-content-between align-items-center">
                             <span class="text-muted small fw-bold">MAKİNE DURUMU</span>
                             <span id="op-status-badge" class="badge bg-secondary">OFFLINE</span>
@@ -273,7 +274,7 @@
                 </div>
 
                 <div class="col-xl-3 col-md-6">
-                    <div class="card card-custom p-3 h-100">
+                    <div class="card card-custom p-3 h-100 live-metric-card">
                         <div class="d-flex justify-content-between align-items-center">
                             <span class="text-muted small fw-bold">SAĞLIK SKORU</span>
                             <span id="health-grade-badge" class="badge bg-success">HEALTHY</span>
@@ -384,15 +385,33 @@
                 </div>
 
                 <div class="col-lg-6">
-                    <!-- Event Timeline Panel -->
+                    <!-- Event Timeline Panel (SCADA / HMI Audit & System Events) -->
                     <div class="card card-custom p-3 h-100" id="event-timeline-card">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
                             <h6 class="mb-0 text-dark fw-bold">
-                                <i class="fa-solid fa-clock-rotate-left text-primary me-2"></i>Olay Akışı (Event Timeline)
+                                <i class="fa-solid fa-clock-rotate-left text-primary me-2"></i>SCADA Olay Akışı & Audit Log
                             </h6>
-                            <span class="badge bg-primary" id="event-count-badge" style="font-size: 0.75rem;">Canlı Olaylar</span>
+                            <div class="d-flex align-items-center gap-1">
+                                <span class="badge bg-primary d-flex align-items-center gap-1" id="event-count-badge" style="font-size: 0.72rem;">
+                                    <span class="spinner-grow spinner-grow-sm" role="status" style="width: 0.45rem; height: 0.45rem;"></span>
+                                    Canlı
+                                </span>
+                                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size: 0.72rem;" onclick="fetchRecentEvents()" title="Yenile">
+                                    <i class="fa-solid fa-arrows-rotate"></i>
+                                </button>
+                            </div>
                         </div>
-                        <div id="event-timeline-list" class="mt-2" style="max-height: 240px; overflow-y: auto; font-size: 0.8rem;">
+
+                        <!-- Olay Kategori Filtre Butonları -->
+                        <div class="d-flex flex-wrap gap-1 mb-2">
+                            <button type="button" class="btn btn-sm btn-primary event-filter-btn py-0 px-2 active" style="font-size: 0.70rem;" onclick="filterEventTimeline('ALL', this)">Tümü</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary event-filter-btn py-0 px-2" style="font-size: 0.70rem;" onclick="filterEventTimeline('PLC', this)">PLC / Ağ</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary event-filter-btn py-0 px-2" style="font-size: 0.70rem;" onclick="filterEventTimeline('MACHINE', this)">Makineler</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary event-filter-btn py-0 px-2" style="font-size: 0.70rem;" onclick="filterEventTimeline('ALARM', this)">Alarmlar</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary event-filter-btn py-0 px-2" style="font-size: 0.70rem;" onclick="filterEventTimeline('SECURITY', this)">Güvenlik</button>
+                        </div>
+
+                        <div id="event-timeline-list" class="mt-1" style="max-height: 215px; overflow-y: auto; font-size: 0.8rem;">
                             <div class="text-muted small py-1">
                                 <i class="fa-solid fa-spinner fa-spin me-1"></i> Olaylar yükleniyor...
                             </div>
@@ -996,47 +1015,106 @@
             } catch (e) { console.error("Senaryo değiştirilemedi"); }
         }
 
-        // GÜN 3 (Sprint 3.4 & 3.5): Olay Zaman Çizelgesi (Event Timeline) Yönetimi
+        // SCADA / HMI Olay Zaman Çizelgesi (Event Timeline & Audit Log)
+        let currentEventsCache = [];
+        let activeEventCategory = 'ALL';
+
+        function getEventMeta(ev) {
+            let type = ev.eventType || '';
+            let sev = ev.severity;
+            let icon = 'fa-bell';
+            let color = 'text-primary';
+            let category = 'SYSTEM';
+
+            if (type.startsWith('PLC_')) {
+                category = 'PLC';
+                if (type === 'PLC_CONNECTED') { icon = 'fa-plug'; color = 'text-success'; }
+                else if (type === 'PLC_DISCONNECTED') { icon = 'fa-plug-circle-xmark'; color = 'text-danger'; }
+                else if (type === 'PLC_RECONNECTING') { icon = 'fa-arrows-rotate fa-spin'; color = 'text-warning'; }
+                else if (type === 'PLC_COMMAND_SENT') { icon = 'fa-sliders'; color = 'text-info'; }
+            } else if (type.startsWith('MACHINE_')) {
+                category = 'MACHINE';
+                if (type === 'MACHINE_STARTED') { icon = 'fa-circle-play'; color = 'text-success'; }
+                else if (type === 'MACHINE_STOPPED') { icon = 'fa-circle-pause'; color = 'text-warning'; }
+                else { icon = 'fa-gears'; color = 'text-secondary'; }
+            } else if (type.startsWith('ALARM_')) {
+                category = 'ALARM';
+                if (type === 'ALARM_TRIGGERED') { icon = 'fa-triangle-exclamation'; color = 'text-danger'; }
+                else if (type === 'ALARM_ACKNOWLEDGED') { icon = 'fa-clipboard-check'; color = 'text-info'; }
+                else if (type === 'ALARM_RESOLVED') { icon = 'fa-circle-check'; color = 'text-success'; }
+            } else if (type.startsWith('USER_') || type.startsWith('AUTH_')) {
+                category = 'SECURITY';
+                if (type === 'USER_LOGIN') { icon = 'fa-user-shield'; color = 'text-primary'; }
+                else if (type === 'AUTH_FAILED') { icon = 'fa-user-xmark'; color = 'text-danger'; }
+            } else {
+                if (sev === 'Critical' || sev === 3) { icon = 'fa-triangle-exclamation'; color = 'text-danger'; }
+                else if (sev === 'Warning' || sev === 2) { icon = 'fa-circle-exclamation'; color = 'text-warning'; }
+            }
+
+            return { icon, color, category };
+        }
+
         async function fetchRecentEvents() {
             try {
-                let res = await fetch('http://localhost:5000/api/events/recent?limit=30');
+                let res = await fetch('http://localhost:5000/api/events/recent?limit=40');
                 if (res.ok) {
-                    let events = await res.json();
-                    renderEventTimeline(events);
+                    currentEventsCache = await res.json();
+                    renderEventTimeline();
                 }
             } catch (err) {
                 console.warn("Sistem olayları alınamadı:", err);
             }
         }
 
-        function renderEventTimeline(events) {
+        function filterEventTimeline(category, btnEl) {
+            activeEventCategory = category;
+            document.querySelectorAll('.event-filter-btn').forEach(b => {
+                b.classList.remove('btn-primary', 'active');
+                b.classList.add('btn-outline-secondary');
+            });
+            if (btnEl) {
+                btnEl.classList.remove('btn-outline-secondary');
+                btnEl.classList.add('btn-primary', 'active');
+            }
+            renderEventTimeline();
+        }
+
+        function renderEventTimeline() {
             let container = document.getElementById('event-timeline-list');
             if (!container) return;
 
-            if (!events || events.length === 0) {
+            let filtered = currentEventsCache.filter(ev => {
+                if (activeEventCategory === 'ALL') return true;
+                let meta = getEventMeta(ev);
+                return meta.category === activeEventCategory;
+            });
+
+            if (!filtered || filtered.length === 0) {
                 container.innerHTML = `
-                    <div class="text-muted small py-2">
-                        <i class="fa-solid fa-info-circle me-1"></i> Henüz kaydedilmiş bir sistem olayı bulunmuyor.
+                    <div class="text-muted small py-3 text-center">
+                        <i class="fa-solid fa-circle-info me-1"></i> Bu filtreye uygun kaydedilmiş bir sistem olayı bulunmuyor.
                     </div>
                 `;
                 return;
             }
 
             let html = '<div class="list-group list-group-flush">';
-            events.forEach(ev => {
+            filtered.forEach(ev => {
+                let meta = getEventMeta(ev);
                 let timeStr = new Date(ev.timestamp).toLocaleTimeString();
-                let sev = ev.severity;
-                let sevClass = sev === 'Critical' || sev === 3 ? 'text-danger' : (sev === 'Warning' || sev === 2 ? 'text-warning' : 'text-primary');
-                let iconClass = sev === 'Critical' || sev === 3 ? 'fa-triangle-exclamation' : (sev === 'Warning' || sev === 2 ? 'fa-circle-exclamation' : 'fa-bell');
+                let machineBadge = ev.machineId ? `<span class="badge bg-light text-secondary border me-1" style="font-size: 0.65rem;">#M${ev.machineId}</span>` : '';
 
                 html += `
                     <div class="list-group-item px-2 py-1 border-0 border-bottom d-flex justify-content-between align-items-center" style="background: transparent;">
-                        <div>
-                            <i class="fa-solid ${iconClass} ${sevClass} me-2"></i>
-                            <strong class="text-dark">${ev.eventType}</strong>
-                            <span class="text-muted ms-1 small">${ev.description}</span>
+                        <div class="d-flex align-items-center text-truncate pe-2">
+                            <i class="fa-solid ${meta.icon} ${meta.color} me-2" style="font-size: 0.9rem; min-width: 16px;"></i>
+                            <span class="text-truncate">
+                                ${machineBadge}
+                                <strong class="text-dark me-1" style="font-size: 0.78rem;">${ev.eventType}</strong>
+                                <span class="text-muted small" title="${ev.description}">${ev.description}</span>
+                            </span>
                         </div>
-                        <span class="badge bg-light text-secondary border" style="font-size: 0.70rem;">${timeStr}</span>
+                        <span class="badge bg-light text-secondary border flex-shrink-0" style="font-size: 0.68rem;">${timeStr}</span>
                     </div>
                 `;
             });
@@ -1045,37 +1123,29 @@
         }
 
         function prependEventToTimeline(ev) {
-            let container = document.getElementById('event-timeline-list');
-            if (!container) return;
+            currentEventsCache.unshift(ev);
+            if (currentEventsCache.length > 100) currentEventsCache.pop();
 
-            let timeStr = new Date(ev.timestamp).toLocaleTimeString();
-            let sev = ev.severity;
-            let sevClass = sev === 'Critical' || sev === 3 ? 'text-danger' : (sev === 'Warning' || sev === 2 ? 'text-warning' : 'text-primary');
-            let iconClass = sev === 'Critical' || sev === 3 ? 'fa-triangle-exclamation' : (sev === 'Warning' || sev === 2 ? 'fa-circle-exclamation' : 'fa-bell');
-
-            let itemHtml = `
-                <div class="list-group-item px-2 py-1 border-0 border-bottom d-flex justify-content-between align-items-center bg-light bg-opacity-50" style="animation: fadeIn 0.4s ease;">
-                    <div>
-                        <i class="fa-solid ${iconClass} ${sevClass} me-2"></i>
-                        <strong class="text-dark">${ev.eventType}</strong>
-                        <span class="text-muted ms-1 small">${ev.description}</span>
-                    </div>
-                    <span class="badge bg-light text-secondary border" style="font-size: 0.70rem;">${timeStr}</span>
-                </div>
-            `;
-
-            let listGroup = container.querySelector('.list-group');
-            if (listGroup) {
-                listGroup.insertAdjacentHTML('afterbegin', itemHtml);
-            } else {
-                container.innerHTML = `<div class="list-group list-group-flush">${itemHtml}</div>`;
+            let meta = getEventMeta(ev);
+            if (activeEventCategory !== 'ALL' && meta.category !== activeEventCategory) {
+                return; // Seçili filtreye uymuyorsa arayüzü güncelleme
             }
+
+            renderEventTimeline();
         }
 
         // GÜN 3 (Sprint 3.4): SignalR Canlı Olay Dinleyicisi
         hubConnection.on("ReceiveSystemEvent", function (ev) {
             prependEventToTimeline(ev);
         });
+
+        // Global Shared State Entegrasyonu
+        if (window.SharedState) {
+            window.SharedState.init();
+            window.SharedState.onPlcConnectionChanged((isConnected, stateName) => {
+                updatePlcStatusUI({ state: stateName || (isConnected ? 'Connected' : 'Disconnected'), isConnected: isConnected });
+            });
+        }
 
         // Initial Startup
         startSignalR();

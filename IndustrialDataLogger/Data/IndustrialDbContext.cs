@@ -9,8 +9,10 @@ namespace IndustrialDataLogger.Data
         {
         }
 
+        public DbSet<Machine> Machines { get; set; } = null!;
         public DbSet<SensorDataLog> SensorDataLogs { get; set; } = null!;
         public DbSet<AlarmLog> Alarms { get; set; } = null!;
+        public DbSet<AlarmRule> AlarmRules { get; set; } = null!;
         public DbSet<SystemEventLog> SystemEvents { get; set; } = null!;
         public DbSet<PlcTagConfig> PlcTags { get; set; } = null!;
 
@@ -18,11 +20,53 @@ namespace IndustrialDataLogger.Data
         {
             base.OnModelCreating(modelBuilder);
 
+            // 1. Machine Tablosu & İndeksleri
+            modelBuilder.Entity<Machine>(entity =>
+            {
+                entity.ToTable("machines");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.MachineCode).HasColumnName("machinecode").IsRequired().HasMaxLength(50);
+                entity.Property(e => e.Name).HasColumnName("name").IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Type).HasColumnName("type").IsRequired().HasMaxLength(50);
+                entity.Property(e => e.PlcIp).HasColumnName("plcip").IsRequired().HasMaxLength(50);
+                entity.Property(e => e.IsActive).HasColumnName("isactive").HasDefaultValue(true);
+                entity.Property(e => e.Description).HasColumnName("description").HasMaxLength(255);
+                entity.Property(e => e.CreatedAt).HasColumnName("createdat").IsRequired();
+                entity.Property(e => e.UpdatedAt).HasColumnName("updatedat");
+
+                entity.HasIndex(e => e.MachineCode)
+                      .IsUnique()
+                      .HasDatabaseName("IX_machines_machinecode");
+
+                // Relationships
+                entity.HasMany(e => e.SensorDataLogs)
+                      .WithOne(s => s.Machine)
+                      .HasForeignKey(s => s.MachineId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasMany(e => e.AlarmLogs)
+                      .WithOne(a => a.Machine)
+                      .HasForeignKey(a => a.MachineId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasMany(e => e.PlcTagConfigs)
+                      .WithOne(t => t.Machine)
+                      .HasForeignKey(t => t.MachineId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasMany(e => e.AlarmRules)
+                      .WithOne(r => r.Machine)
+                      .HasForeignKey(r => r.MachineId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
             modelBuilder.Entity<PlcTagConfig>(entity =>
             {
                 entity.ToTable("plctagconfigs");
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.MachineId).HasColumnName("machineid").HasDefaultValue(1);
                 entity.Property(e => e.TagName).HasColumnName("tagname").IsRequired().HasMaxLength(100);
                 entity.Property(e => e.DbNumber).HasColumnName("dbnumber").IsRequired();
                 entity.Property(e => e.ByteOffset).HasColumnName("byteoffset").IsRequired();
@@ -34,6 +78,9 @@ namespace IndustrialDataLogger.Data
                 entity.Property(e => e.IsMonitored).HasColumnName("ismonitored");
                 entity.Property(e => e.CreatedAt).HasColumnName("createdat").IsRequired();
                 entity.Property(e => e.UpdatedAt).HasColumnName("updatedat");
+
+                entity.HasIndex(e => e.MachineId)
+                      .HasDatabaseName("IX_plctagconfigs_machineid");
             });
 
             modelBuilder.Entity<SensorDataLog>(entity =>
@@ -46,7 +93,11 @@ namespace IndustrialDataLogger.Data
                 entity.HasIndex(e => e.Timestamp)
                       .HasDatabaseName("IX_sensordata_timestamp");
 
+                entity.HasIndex(e => e.MachineId)
+                      .HasDatabaseName("IX_sensordata_machineid");
+
                 entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.MachineId).HasColumnName("machineid").HasDefaultValue(1);
                 entity.Property(e => e.Timestamp).HasColumnName("timestamp").IsRequired();
                 entity.Property(e => e.Temperature).HasColumnName("temperature").IsRequired();
                 entity.Property(e => e.Pressure).HasColumnName("pressure").IsRequired();
@@ -67,7 +118,11 @@ namespace IndustrialDataLogger.Data
                 entity.HasIndex(e => e.Status)
                       .HasDatabaseName("IX_alarmlogs_status");
 
+                entity.HasIndex(e => e.MachineId)
+                      .HasDatabaseName("IX_alarmlogs_machineid");
+
                 entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.MachineId).HasColumnName("machineid").HasDefaultValue(1);
                 entity.Property(e => e.AlarmType).HasColumnName("alarmtype").IsRequired().HasMaxLength(100);
                 entity.Property(e => e.Severity).HasColumnName("severity").IsRequired();
                 entity.Property(e => e.Status).HasColumnName("status").IsRequired();
@@ -89,12 +144,46 @@ namespace IndustrialDataLogger.Data
                 entity.HasIndex(e => e.Timestamp)
                       .HasDatabaseName("IX_systemeventlogs_timestamp");
 
+                entity.HasIndex(e => e.MachineId)
+                      .HasDatabaseName("IX_systemeventlogs_machineid");
+
                 entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.MachineId).HasColumnName("machineid");
                 entity.Property(e => e.EventType).HasColumnName("eventtype").IsRequired().HasMaxLength(100);
                 entity.Property(e => e.Severity).HasColumnName("severity").IsRequired();
                 entity.Property(e => e.Description).HasColumnName("description").IsRequired().HasMaxLength(500);
                 entity.Property(e => e.Source).HasColumnName("source").HasMaxLength(100);
                 entity.Property(e => e.Timestamp).HasColumnName("timestamp").IsRequired();
+            });
+
+            // GÜN 4 / Sprint 3.6: AlarmRule tablosu ve indeksleri (Konfigüre Edilebilir Kural Motoru)
+            modelBuilder.Entity<AlarmRule>(entity =>
+            {
+                entity.ToTable("alarmrules");
+
+                entity.HasKey(e => e.Id);
+
+                entity.HasIndex(e => e.MachineId)
+                      .HasDatabaseName("IX_alarmrules_machineid");
+
+                entity.HasIndex(e => e.Metric)
+                      .HasDatabaseName("IX_alarmrules_metric");
+
+                entity.HasIndex(e => e.Enabled)
+                      .HasDatabaseName("IX_alarmrules_enabled");
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.MachineId).HasColumnName("machineid");
+                entity.Property(e => e.RuleName).HasColumnName("rulename").IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Metric).HasColumnName("metric").IsRequired().HasMaxLength(50);
+                entity.Property(e => e.Operator).HasColumnName("operator").IsRequired();
+                entity.Property(e => e.Threshold).HasColumnName("threshold").IsRequired();
+                entity.Property(e => e.Severity).HasColumnName("severity").IsRequired();
+                entity.Property(e => e.AlarmType).HasColumnName("alarmtype").IsRequired().HasMaxLength(100);
+                entity.Property(e => e.MessageTemplate).HasColumnName("messagetemplate").IsRequired().HasMaxLength(255);
+                entity.Property(e => e.Enabled).HasColumnName("enabled").HasDefaultValue(true);
+                entity.Property(e => e.CreatedAt).HasColumnName("createdat").IsRequired();
+                entity.Property(e => e.UpdatedAt).HasColumnName("updatedat");
             });
         }
     }

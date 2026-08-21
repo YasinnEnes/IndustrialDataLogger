@@ -20,6 +20,7 @@ namespace IndustrialDataLogger
         private readonly IServiceProvider _serviceProvider;
         private readonly IHubContext<MonitoringHub> _hubContext;
         private bool? _lastMachineStatus = null;
+        private PlcConnectionState? _lastConnectionState = null;
 
         public Worker(
             ILogger<Worker> logger,
@@ -46,12 +47,33 @@ namespace IndustrialDataLogger
                     var digitalTwinService = scope.ServiceProvider.GetRequiredService<IDigitalTwinService>();
                     var eventLogService = scope.ServiceProvider.GetRequiredService<IEventLogService>();
 
+                    int currentMachineId = 1;
+
+                    // PLC bağlantı durumu geçiş kontrolü & Sistem Olay Günlüğü
+                    if (_lastConnectionState.HasValue && _lastConnectionState.Value != connectionManager.CurrentState)
+                    {
+                        if (connectionManager.CurrentState == PlcConnectionState.Connected)
+                        {
+                            await eventLogService.LogEventAsync("PLC_CONNECTED", $"PLC ile endüstriyel haberleşme başarıyla kuruldu (Makine #{currentMachineId}).", AlarmSeverity.Info, "PLC", currentMachineId, stoppingToken);
+                        }
+                        else if (connectionManager.CurrentState == PlcConnectionState.Disconnected)
+                        {
+                            await eventLogService.LogEventAsync("PLC_DISCONNECTED", $"PLC bağlantısı koptu veya durduruldu (Makine #{currentMachineId}).", AlarmSeverity.Warning, "PLC", currentMachineId, stoppingToken);
+                        }
+                        else if (connectionManager.CurrentState == PlcConnectionState.Reconnecting)
+                        {
+                            await eventLogService.LogEventAsync("PLC_RECONNECTING", $"PLC bağlantısı kesildi, otomatik yeniden bağlanma deneniyor (Makine #{currentMachineId}).", AlarmSeverity.Warning, "PLC", currentMachineId, stoppingToken);
+                        }
+                    }
+                    _lastConnectionState = connectionManager.CurrentState;
+
                     // GÜN 4: PLC bağlantı durumunu alarm motoruna bildir
-                    await alarmService.ProcessPlcStatusAsync(connectionManager.CurrentState, stoppingToken);
+                    await alarmService.ProcessPlcStatusAsync(connectionManager.CurrentState, currentMachineId, stoppingToken);
 
                     // GÜN 3: PLC durumunu anlık olarak SignalR istemcilerine yayınla
                     await _hubContext.Clients.All.SendAsync("ReceivePlcStatus", new
                     {
+                        machineId = currentMachineId,
                         isConnected = connectionManager.IsConnected,
                         state = connectionManager.CurrentState.ToString()
                     }, stoppingToken);
@@ -64,28 +86,30 @@ namespace IndustrialDataLogger
 
                         if (data != null)
                         {
-                            _logger.LogInformation($"Okunan Değerler -> Sıcaklık: {data.Temperature}°C | Basınç: {data.Pressure} bar | Durum: {(data.MachineStatus ? "Çalışıyor" : "Durdu")}");
+                            data.MachineId = currentMachineId;
+                            _logger.LogInformation($"[Makine #{currentMachineId}] Okunan Değerler -> Sıcaklık: {data.Temperature}°C | Basınç: {data.Pressure} bar | Durum: {(data.MachineStatus ? "Çalışıyor" : "Durdu")}");
 
                             // Makine durumu geçiş kontrolü
                             if (_lastMachineStatus.HasValue && _lastMachineStatus.Value != data.MachineStatus)
                             {
                                 if (data.MachineStatus)
                                 {
-                                    await eventLogService.LogEventAsync("MACHINE_STARTED", "Üretim makinesi devreye girdi ve çalışmaya başladı.", AlarmSeverity.Info, "Telemetry", stoppingToken);
+                                    await eventLogService.LogEventAsync("MACHINE_STARTED", $"Üretim makinesi (ID: {currentMachineId}) devreye girdi ve çalışmaya başladı.", AlarmSeverity.Info, "Telemetry", currentMachineId, stoppingToken);
                                 }
                                 else
                                 {
-                                    await eventLogService.LogEventAsync("MACHINE_STOPPED", "Üretim makinesi durduruldu veya bekleme moduna geçti.", AlarmSeverity.Warning, "Telemetry", stoppingToken);
+                                    await eventLogService.LogEventAsync("MACHINE_STOPPED", $"Üretim makinesi (ID: {currentMachineId}) durduruldu veya bekleme moduna geçti.", AlarmSeverity.Warning, "Telemetry", currentMachineId, stoppingToken);
                                 }
                             }
                             _lastMachineStatus = data.MachineStatus;
 
                             // GÜN 4: Sensör verilerini kural motorundan (Alarm Engine) geçir
-                            await alarmService.ProcessSensorReadingAsync(data, stoppingToken);
+                            await alarmService.ProcessSensorReadingAsync(data, currentMachineId, stoppingToken);
 
                             // GÜN 3: SignalR üzerinden sensör telemetrisini yayınla
                             await _hubContext.Clients.All.SendAsync("ReceiveSensorData", new
                             {
+                                machineId = currentMachineId,
                                 timestamp = data.Timestamp,
                                 temperature = Math.Round(data.Temperature, 2),
                                 pressure = Math.Round(data.Pressure, 2),
@@ -101,6 +125,7 @@ namespace IndustrialDataLogger
                                 {
                                     var logEntity = new SensorDataLog
                                     {
+                                        MachineId = currentMachineId,
                                         Timestamp = DateTime.UtcNow,
                                         Temperature = data.Temperature,
                                         Pressure = data.Pressure,
@@ -120,7 +145,7 @@ namespace IndustrialDataLogger
                     }
 
                     // GÜN 2 & GÜN 5 (Sprint 2.4): Digital Twin Durumunu ve Sağlık Skorunu Güncelle & SignalR ile Yayınla
-                    var twinState = await digitalTwinService.UpdateStateAsync(data, connectionManager.CurrentState, stoppingToken);
+                    var twinState = await digitalTwinService.UpdateStateAsync(data, connectionManager.CurrentState, currentMachineId, stoppingToken);
                     await _hubContext.Clients.All.SendAsync("ReceiveDigitalTwinState", twinState, stoppingToken);
                 }
                 catch (Exception ex)

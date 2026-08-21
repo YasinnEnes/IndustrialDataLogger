@@ -23,14 +23,13 @@ namespace IndustrialDataLogger.Services
         private readonly IHubContext<MonitoringHub> _hubContext;
         private readonly IEventLogService _eventLogService;
 
-        // GÜN 3 (Sprint 3.1) Eşik Tanımları
-        public const double CriticalTempThreshold = 90.0;
-        public const double WarningTempThreshold = 80.0;
-        public const double CriticalPressureThreshold = 9.0;
-        public const double WarningPressureThreshold = 8.0;
-
-        // Aktif alarmları thread-safe olarak bellekte takip eder
+        // Aktif alarmları thread-safe olarak bellekte takip eder (Key: "{machineId}:{alarmType}")
         private readonly ConcurrentDictionary<string, AlarmLog> _activeAlarms = new();
+
+        // Konfigüre edilebilir kuralların yüksek performanslı bellek içi önbelleği
+        private readonly List<AlarmRule> _cachedRules = new();
+        private readonly ReaderWriterLockSlim _rulesLock = new();
+        private bool _rulesInitialized = false;
 
         public AlarmService(
             ILogger<AlarmService> logger,
@@ -44,63 +43,86 @@ namespace IndustrialDataLogger.Services
             _eventLogService = eventLogService;
         }
 
-        public async Task ProcessSensorReadingAsync(SensorData data, CancellationToken cancellationToken = default)
+        #region Telemetri ve Eşik Değerlendirme (Kural Motoru)
+
+        public async Task ProcessSensorReadingAsync(SensorData data, int machineId = 1, CancellationToken cancellationToken = default)
         {
             if (data == null) return;
 
-            // 1. Sıcaklık Eşik Kontrolü
-            if (data.Temperature > CriticalTempThreshold)
-            {
-                // Warning varsa çöz, Critical aç
-                await TryResolveAlarmAsync("HIGH_TEMPERATURE", cancellationToken);
-                await RaiseOrUpdateAlarmAsync("CRITICAL_TEMPERATURE", AlarmSeverity.Critical,
-                    $"Kritik Sıcaklık! Değer: {data.Temperature:F1}°C (Eşik: {CriticalTempThreshold}°C)",
-                    data.Temperature, CriticalTempThreshold, cancellationToken);
-            }
-            else if (data.Temperature > WarningTempThreshold)
-            {
-                // Critical varsa çöz, Warning aç
-                await TryResolveAlarmAsync("CRITICAL_TEMPERATURE", cancellationToken);
-                await RaiseOrUpdateAlarmAsync("HIGH_TEMPERATURE", AlarmSeverity.Warning,
-                    $"Yüksek Sıcaklık Uyarısı! Değer: {data.Temperature:F1}°C (Eşik: {WarningTempThreshold}°C)",
-                    data.Temperature, WarningTempThreshold, cancellationToken);
-            }
-            else
-            {
-                // Sıcaklık normale döndü
-                await TryResolveAlarmAsync("CRITICAL_TEMPERATURE", cancellationToken);
-                await TryResolveAlarmAsync("HIGH_TEMPERATURE", cancellationToken);
-            }
+            int mId = data.MachineId > 0 ? data.MachineId : machineId;
 
-            // 2. Basınç Eşik Kontrolü
-            if (data.Pressure > CriticalPressureThreshold)
+            // Kuralların yüklendiğinden emin ol
+            await EnsureRulesLoadedAsync(cancellationToken);
+
+            var activeRules = GetActiveRulesForMachine(mId);
+
+            // Metrik bazlı değer haritası
+            var metrics = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
             {
-                await TryResolveAlarmAsync("HIGH_PRESSURE", cancellationToken);
-                await RaiseOrUpdateAlarmAsync("CRITICAL_PRESSURE", AlarmSeverity.Critical,
-                    $"Kritik Basınç! Değer: {data.Pressure:F1} bar (Eşik: {CriticalPressureThreshold} bar)",
-                    data.Pressure, CriticalPressureThreshold, cancellationToken);
-            }
-            else if (data.Pressure > WarningPressureThreshold)
+                { "Temperature", data.Temperature },
+                { "Pressure", data.Pressure },
+                { "ErrorCode", data.ErrorCode },
+                { "MachineStatus", data.MachineStatus ? 1.0 : 0.0 }
+            };
+
+            // Her metrik için kuralları çalıştır
+            foreach (var metricGroup in activeRules.GroupBy(r => r.Metric, StringComparer.OrdinalIgnoreCase))
             {
-                await TryResolveAlarmAsync("CRITICAL_PRESSURE", cancellationToken);
-                await RaiseOrUpdateAlarmAsync("HIGH_PRESSURE", AlarmSeverity.Warning,
-                    $"Yüksek Basınç Uyarısı! Değer: {data.Pressure:F1} bar (Eşik: {WarningPressureThreshold} bar)",
-                    data.Pressure, WarningPressureThreshold, cancellationToken);
-            }
-            else
-            {
-                // Basınç normale döndü
-                await TryResolveAlarmAsync("CRITICAL_PRESSURE", cancellationToken);
-                await TryResolveAlarmAsync("HIGH_PRESSURE", cancellationToken);
+                string metricName = metricGroup.Key;
+                if (!metrics.TryGetValue(metricName, out double metricValue))
+                {
+                    continue;
+                }
+
+                // Kuralları ciddiyet derecesine göre sırala (Critical önce değerlendirilsin)
+                var sortedRules = metricGroup.OrderByDescending(r => r.Severity).ToList();
+                bool anyTriggeredInGroup = false;
+
+                foreach (var rule in sortedRules)
+                {
+                    bool isTriggered = EvaluateCondition(metricValue, rule.Operator, rule.Threshold);
+
+                    if (isTriggered)
+                    {
+                        anyTriggeredInGroup = true;
+                        string message = FormatRuleMessage(rule, metricValue);
+
+                        // Diğer aynı metrikteki alt seviye alarmları çöz, en kritik olanı aç
+                        foreach (var otherRule in sortedRules.Where(r => r.Id != rule.Id && r.AlarmType != rule.AlarmType))
+                        {
+                            await TryResolveAlarmAsync(otherRule.AlarmType, mId, cancellationToken);
+                        }
+
+                        await RaiseOrUpdateAlarmAsync(
+                            rule.AlarmType,
+                            rule.Severity,
+                            message,
+                            metricValue,
+                            rule.Threshold,
+                            mId,
+                            cancellationToken);
+
+                        break; // En yüksek öncelikli alarm tetiklendiğinde alt seviyeyi tetikleme
+                    }
+                }
+
+                // Eğer o metriğe ait hiçbir kural tetiklenmediyse, o metriğe ait aktif alarmları çöz
+                if (!anyTriggeredInGroup)
+                {
+                    foreach (var rule in sortedRules)
+                    {
+                        await TryResolveAlarmAsync(rule.AlarmType, mId, cancellationToken);
+                    }
+                }
             }
         }
 
-        public async Task ProcessPlcStatusAsync(PlcConnectionState state, CancellationToken cancellationToken = default)
+        public async Task ProcessPlcStatusAsync(PlcConnectionState state, int machineId = 1, CancellationToken cancellationToken = default)
         {
             if (state == PlcConnectionState.Connected)
             {
                 // PLC bağlı ise bağlantı koptu alarmını çöz
-                await TryResolveAlarmAsync("PLC_CONNECTION_LOST", cancellationToken);
+                await TryResolveAlarmAsync("PLC_CONNECTION_LOST", machineId, cancellationToken);
             }
             else if (state == PlcConnectionState.Disconnected || state == PlcConnectionState.Reconnecting)
             {
@@ -109,9 +131,41 @@ namespace IndustrialDataLogger.Services
                     state == PlcConnectionState.Reconnecting
                         ? "PLC Bağlantısı Koptu! Otomatik yeniden bağlanma devrede..."
                         : "PLC Bağlantısı Yok! Sunucu PLC ile haberleşemiyor.",
-                    null, null, cancellationToken);
+                    null, null, machineId, cancellationToken);
             }
         }
+
+        public static bool EvaluateCondition(double value, ComparisonOperator op, double threshold)
+        {
+            return op switch
+            {
+                ComparisonOperator.GreaterThan => value > threshold,
+                ComparisonOperator.GreaterThanOrEqual => value >= threshold,
+                ComparisonOperator.LessThan => value < threshold,
+                ComparisonOperator.LessThanOrEqual => value <= threshold,
+                ComparisonOperator.Equal => Math.Abs(value - threshold) < 0.0001,
+                ComparisonOperator.NotEqual => Math.Abs(value - threshold) >= 0.0001,
+                _ => false
+            };
+        }
+
+        private static string FormatRuleMessage(AlarmRule rule, double value)
+        {
+            if (string.IsNullOrWhiteSpace(rule.MessageTemplate))
+            {
+                return $"[Alarm] {rule.RuleName}: Değer = {value:F1} (Eşik: {rule.Threshold:F1})";
+            }
+
+            return rule.MessageTemplate
+                .Replace("{value}", value.ToString("F1"))
+                .Replace("{threshold}", rule.Threshold.ToString("F1"))
+                .Replace("{metric}", rule.Metric)
+                .Replace("{rule}", rule.RuleName);
+        }
+
+        #endregion
+
+        #region Alarm Yaşam Döngüsü (Lifecycle: NORMAL -> TRIGGERED -> ACTIVE -> ACKNOWLEDGED -> RESOLVED)
 
         private async Task RaiseOrUpdateAlarmAsync(
             string alarmType,
@@ -119,18 +173,23 @@ namespace IndustrialDataLogger.Services
             string message,
             double? triggeredValue,
             double? thresholdValue,
+            int machineId,
             CancellationToken cancellationToken)
         {
-            if (_activeAlarms.TryGetValue(alarmType, out var existingAlarm))
+            string key = $"{machineId}:{alarmType}";
+
+            if (_activeAlarms.TryGetValue(key, out var existingAlarm))
             {
-                // Alarm zaten aktif, değer güncelleniyorsa logla
+                // Alarm zaten aktif veya onaylanmış, güncel telemetri değerini güncelle
                 existingAlarm.TriggeredValue = triggeredValue;
                 existingAlarm.Message = message;
                 return;
             }
 
+            // Yaşam döngüsü: Alarm tetiklendi (TRIGGERED -> ACTIVE)
             var alarm = new AlarmLog
             {
+                MachineId = machineId,
                 AlarmType = alarmType,
                 Severity = severity,
                 Status = AlarmStatus.Active,
@@ -140,7 +199,7 @@ namespace IndustrialDataLogger.Services
                 CreatedAt = DateTime.UtcNow
             };
 
-            _activeAlarms[alarmType] = alarm;
+            _activeAlarms[key] = alarm;
 
             // Veritabanına kaydet
             try
@@ -158,18 +217,20 @@ namespace IndustrialDataLogger.Services
                 _logger.LogError("Alarm veritabanına kaydedilirken hata: {Message}", ex.Message);
             }
 
-            _logger.LogWarning($"[ALARM ÜRETİLDİ] [{severity}] {alarmType}: {message}");
+            _logger.LogWarning($"[ALARM AKTİF] (Makine #{machineId}) [{severity}] {alarmType}: {message}");
 
-            // GÜN 3 (Sprint 3.4): Sistem Olayı Olarak Kaydet
-            await _eventLogService.LogEventAsync("ALARM_TRIGGERED", $"[{severity}] {alarmType}: {message}", severity, "AlarmEngine", cancellationToken);
+            // Sistem Olay Günlüğüne Kaydet
+            await _eventLogService.LogEventAsync("ALARM_TRIGGERED", $"[Makine #{machineId}] [{severity}] {alarmType}: {message}", severity, "AlarmEngine", cancellationToken);
 
             // SignalR ile anlık yayın
             await BroadcastAlarmStateAsync(cancellationToken);
         }
 
-        private async Task TryResolveAlarmAsync(string alarmType, CancellationToken cancellationToken)
+        private async Task TryResolveAlarmAsync(string alarmType, int machineId, CancellationToken cancellationToken)
         {
-            if (_activeAlarms.TryRemove(alarmType, out var alarm))
+            string key = $"{machineId}:{alarmType}";
+
+            if (_activeAlarms.TryRemove(key, out var alarm))
             {
                 alarm.Status = AlarmStatus.Resolved;
                 alarm.ResolvedAt = DateTime.UtcNow;
@@ -195,10 +256,10 @@ namespace IndustrialDataLogger.Services
                     _logger.LogError("Alarm çözülme durumu veritabanına kaydedilirken hata: {Message}", ex.Message);
                 }
 
-                _logger.LogInformation($"[ALARM ÇÖZÜLDÜ] {alarmType} normale döndü.");
+                _logger.LogInformation($"[ALARM ÇÖZÜLDÜ] (Makine #{machineId}) {alarmType} normale döndü.");
 
-                // GÜN 3 (Sprint 3.4): Çözülme Olayını Kaydet
-                await _eventLogService.LogEventAsync("ALARM_RESOLVED", $"Alarm normale döndü ve çözüldü: {alarmType}", AlarmSeverity.Info, "AlarmEngine", cancellationToken);
+                // Çözülme Olayını Kaydet
+                await _eventLogService.LogEventAsync("ALARM_RESOLVED", $"[Makine #{machineId}] Alarm normale döndü ve çözüldü: {alarmType}", AlarmSeverity.Info, "AlarmEngine", cancellationToken);
 
                 // SignalR ile anlık yayın
                 await BroadcastAlarmStateAsync(cancellationToken);
@@ -227,7 +288,7 @@ namespace IndustrialDataLogger.Services
                             activeMatch.AcknowledgedAt = DateTime.UtcNow;
                         }
 
-                        // GÜN 3 (Sprint 3.4): Onaylama Olayını Kaydet
+                        // Onaylama Olayını Kaydet
                         await _eventLogService.LogEventAsync("ALARM_ACKNOWLEDGED", $"Alarm operatör tarafından onaylandı: {entity.AlarmType} (ID: {alarmId})", AlarmSeverity.Info, "Operator", cancellationToken);
 
                         await BroadcastAlarmStateAsync(cancellationToken);
@@ -243,9 +304,14 @@ namespace IndustrialDataLogger.Services
             return false;
         }
 
-        public Task<IReadOnlyList<AlarmLog>> GetActiveAlarmsAsync(CancellationToken cancellationToken = default)
+        public Task<IReadOnlyList<AlarmLog>> GetActiveAlarmsAsync(int? machineId = null, CancellationToken cancellationToken = default)
         {
-            IReadOnlyList<AlarmLog> list = _activeAlarms.Values.OrderByDescending(a => a.CreatedAt).ToList();
+            var query = _activeAlarms.Values.AsEnumerable();
+            if (machineId.HasValue)
+            {
+                query = query.Where(a => a.MachineId == machineId.Value);
+            }
+            IReadOnlyList<AlarmLog> list = query.OrderByDescending(a => a.CreatedAt).ToList();
             return Task.FromResult(list);
         }
 
@@ -253,12 +319,18 @@ namespace IndustrialDataLogger.Services
             int limit = 50,
             AlarmSeverity? severity = null,
             AlarmStatus? status = null,
+            int? machineId = null,
             CancellationToken cancellationToken = default)
         {
             using var scope = _serviceProvider.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<IndustrialDbContext>();
 
             var query = db.Alarms.AsNoTracking();
+
+            if (machineId.HasValue)
+            {
+                query = query.Where(a => a.MachineId == machineId.Value);
+            }
 
             if (severity.HasValue)
             {
@@ -288,6 +360,7 @@ namespace IndustrialDataLogger.Services
                     .Select(a => new
                     {
                         id = a.Id,
+                        machineId = a.MachineId,
                         alarmType = a.AlarmType,
                         severity = a.Severity.ToString(),
                         status = a.Status.ToString(),
@@ -305,5 +378,235 @@ namespace IndustrialDataLogger.Services
                 _logger.LogWarning("SignalR alarm yayını sırasında hata: {Message}", ex.Message);
             }
         }
+
+        #endregion
+
+        #region Kural Yönetimi ve Önbellekleme (CRUD & Rule Engine)
+
+        private async Task EnsureRulesLoadedAsync(CancellationToken cancellationToken)
+        {
+            if (_rulesInitialized) return;
+
+            await ReloadRulesCacheAsync(cancellationToken);
+        }
+
+        public async Task ReloadRulesCacheAsync(CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var db = scope.ServiceProvider.GetService<IndustrialDbContext>();
+                if (db != null)
+                {
+                    var rules = await db.AlarmRules.AsNoTracking().ToListAsync(cancellationToken);
+
+                    _rulesLock.EnterWriteLock();
+                    try
+                    {
+                        _cachedRules.Clear();
+                        _cachedRules.AddRange(rules);
+                        _rulesInitialized = true;
+                    }
+                    finally
+                    {
+                        _rulesLock.ExitWriteLock();
+                    }
+
+                    _logger.LogInformation($"[AlarmService] {_cachedRules.Count} adet alarm kuralı önbelleğe yüklendi.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError("Alarm kuralları önbelleğe yüklenirken hata: {Message}", ex.Message);
+            }
+        }
+
+        private List<AlarmRule> GetActiveRulesForMachine(int machineId)
+        {
+            _rulesLock.EnterReadLock();
+            try
+            {
+                // Belirli makineye atanmış kurallar + genel (MachineId == null) kurallar
+                return _cachedRules
+                    .Where(r => r.Enabled && (r.MachineId == null || r.MachineId == machineId))
+                    .ToList();
+            }
+            finally
+            {
+                _rulesLock.ExitReadLock();
+            }
+        }
+
+        public async Task<IReadOnlyList<AlarmRule>> GetRulesAsync(int? machineId = null, bool? enabledOnly = null, CancellationToken cancellationToken = default)
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<IndustrialDbContext>();
+
+            var query = db.AlarmRules.Include(r => r.Machine).AsNoTracking();
+
+            if (machineId.HasValue)
+            {
+                query = query.Where(r => r.MachineId == null || r.MachineId == machineId.Value);
+            }
+
+            if (enabledOnly.HasValue)
+            {
+                query = query.Where(r => r.Enabled == enabledOnly.Value);
+            }
+
+            return await query.OrderBy(r => r.Metric).ThenBy(r => r.Threshold).ToListAsync(cancellationToken);
+        }
+
+        public async Task<AlarmRule?> GetRuleByIdAsync(int id, CancellationToken cancellationToken = default)
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<IndustrialDbContext>();
+
+            return await db.AlarmRules.Include(r => r.Machine).FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
+        }
+
+        public async Task<AlarmRule> CreateRuleAsync(AlarmRule rule, CancellationToken cancellationToken = default)
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<IndustrialDbContext>();
+
+            rule.CreatedAt = DateTime.UtcNow;
+            await db.AlarmRules.AddAsync(rule, cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+
+            await ReloadRulesCacheAsync(cancellationToken);
+
+            _logger.LogInformation($"[AlarmRule Oluşturuldu] #{rule.Id} - {rule.RuleName} ({rule.Metric} {rule.Operator} {rule.Threshold})");
+            return rule;
+        }
+
+        public async Task<bool> UpdateRuleAsync(AlarmRule rule, CancellationToken cancellationToken = default)
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<IndustrialDbContext>();
+
+            var existing = await db.AlarmRules.FindAsync(new object[] { rule.Id }, cancellationToken);
+            if (existing == null) return false;
+
+            existing.MachineId = rule.MachineId;
+            existing.RuleName = rule.RuleName;
+            existing.Metric = rule.Metric;
+            existing.Operator = rule.Operator;
+            existing.Threshold = rule.Threshold;
+            existing.Severity = rule.Severity;
+            existing.AlarmType = rule.AlarmType;
+            existing.MessageTemplate = rule.MessageTemplate;
+            existing.Enabled = rule.Enabled;
+            existing.UpdatedAt = DateTime.UtcNow;
+
+            await db.SaveChangesAsync(cancellationToken);
+            await ReloadRulesCacheAsync(cancellationToken);
+
+            _logger.LogInformation($"[AlarmRule Güncellendi] #{rule.Id} - {rule.RuleName}");
+            return true;
+        }
+
+        public async Task<bool> DeleteRuleAsync(int id, CancellationToken cancellationToken = default)
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<IndustrialDbContext>();
+
+            var rule = await db.AlarmRules.FindAsync(new object[] { id }, cancellationToken);
+            if (rule == null) return false;
+
+            db.AlarmRules.Remove(rule);
+            await db.SaveChangesAsync(cancellationToken);
+            await ReloadRulesCacheAsync(cancellationToken);
+
+            _logger.LogInformation($"[AlarmRule Silindi] #{id}");
+            return true;
+        }
+
+        public async Task<bool> ToggleRuleAsync(int id, bool enabled, CancellationToken cancellationToken = default)
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<IndustrialDbContext>();
+
+            var rule = await db.AlarmRules.FindAsync(new object[] { id }, cancellationToken);
+            if (rule == null) return false;
+
+            rule.Enabled = enabled;
+            rule.UpdatedAt = DateTime.UtcNow;
+
+            await db.SaveChangesAsync(cancellationToken);
+            await ReloadRulesCacheAsync(cancellationToken);
+
+            _logger.LogInformation($"[AlarmRule Durumu Değişti] #{id} Enabled={enabled}");
+            return true;
+        }
+
+        public async Task EnsureDefaultRulesSeededAsync(CancellationToken cancellationToken = default)
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<IndustrialDbContext>();
+
+            if (!await db.AlarmRules.AnyAsync(cancellationToken))
+            {
+                var defaultRules = new List<AlarmRule>
+                {
+                    new AlarmRule
+                    {
+                        RuleName = "Yüksek Sıcaklık Uyarısı",
+                        Metric = "Temperature",
+                        Operator = ComparisonOperator.GreaterThan,
+                        Threshold = 80.0,
+                        Severity = AlarmSeverity.Warning,
+                        AlarmType = "HIGH_TEMPERATURE",
+                        MessageTemplate = "Yüksek Sıcaklık Uyarısı! Değer: {value}°C (Eşik: {threshold}°C)",
+                        Enabled = true,
+                        CreatedAt = DateTime.UtcNow
+                    },
+                    new AlarmRule
+                    {
+                        RuleName = "Kritik Sıcaklık Tehlikesi",
+                        Metric = "Temperature",
+                        Operator = ComparisonOperator.GreaterThan,
+                        Threshold = 90.0,
+                        Severity = AlarmSeverity.Critical,
+                        AlarmType = "CRITICAL_TEMPERATURE",
+                        MessageTemplate = "Kritik Sıcaklık! Değer: {value}°C (Eşik: {threshold}°C)",
+                        Enabled = true,
+                        CreatedAt = DateTime.UtcNow
+                    },
+                    new AlarmRule
+                    {
+                        RuleName = "Yüksek Basınç Uyarısı",
+                        Metric = "Pressure",
+                        Operator = ComparisonOperator.GreaterThan,
+                        Threshold = 8.0,
+                        Severity = AlarmSeverity.Warning,
+                        AlarmType = "HIGH_PRESSURE",
+                        MessageTemplate = "Yüksek Basınç Uyarısı! Değer: {value} bar (Eşik: {threshold} bar)",
+                        Enabled = true,
+                        CreatedAt = DateTime.UtcNow
+                    },
+                    new AlarmRule
+                    {
+                        RuleName = "Kritik Basınç Tehlikesi",
+                        Metric = "Pressure",
+                        Operator = ComparisonOperator.GreaterThan,
+                        Threshold = 9.0,
+                        Severity = AlarmSeverity.Critical,
+                        AlarmType = "CRITICAL_PRESSURE",
+                        MessageTemplate = "Kritik Basınç! Değer: {value} bar (Eşik: {threshold} bar)",
+                        Enabled = true,
+                        CreatedAt = DateTime.UtcNow
+                    }
+                };
+
+                await db.AlarmRules.AddRangeAsync(defaultRules, cancellationToken);
+                await db.SaveChangesAsync(cancellationToken);
+                _logger.LogInformation("[AlarmService] Varsayılan alarm kuralları veritabanına başarıyla tohumlandı.");
+            }
+
+            await ReloadRulesCacheAsync(cancellationToken);
+        }
+
+        #endregion
     }
 }
