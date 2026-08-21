@@ -22,6 +22,7 @@ namespace IndustrialDataLogger.Services
         private readonly IServiceProvider _serviceProvider;
         private readonly IHubContext<MonitoringHub> _hubContext;
         private readonly IEventLogService _eventLogService;
+        private readonly IAnomalyDetectionEngine _anomalyEngine;
 
         // Aktif alarmları thread-safe olarak bellekte takip eder (Key: "{machineId}:{alarmType}")
         private readonly ConcurrentDictionary<string, AlarmLog> _activeAlarms = new();
@@ -35,15 +36,17 @@ namespace IndustrialDataLogger.Services
             ILogger<AlarmService> logger,
             IServiceProvider serviceProvider,
             IHubContext<MonitoringHub> hubContext,
-            IEventLogService eventLogService)
+            IEventLogService eventLogService,
+            IAnomalyDetectionEngine? anomalyEngine = null)
         {
             _logger = logger;
             _serviceProvider = serviceProvider;
             _hubContext = hubContext;
             _eventLogService = eventLogService;
+            _anomalyEngine = anomalyEngine ?? new AnomalyDetectionEngine(Microsoft.Extensions.Logging.Abstractions.NullLogger<AnomalyDetectionEngine>.Instance);
         }
 
-        #region Telemetri ve Eşik Değerlendirme (Kural Motoru)
+        #region Telemetri ve Eşik Değerlendirme (Kural Motoru & Anomali Tespiti)
 
         public async Task ProcessSensorReadingAsync(SensorData data, int machineId = 1, CancellationToken cancellationToken = default)
         {
@@ -51,7 +54,7 @@ namespace IndustrialDataLogger.Services
 
             int mId = data.MachineId > 0 ? data.MachineId : machineId;
 
-            // Kuralların yüklendiğinden emin ol
+            // 1. Kuralların yüklendiğinden emin ol ve statik eşikleri değerlendir
             await EnsureRulesLoadedAsync(cancellationToken);
 
             var activeRules = GetActiveRulesForMachine(mId);
@@ -102,11 +105,11 @@ namespace IndustrialDataLogger.Services
                             mId,
                             cancellationToken);
 
-                        break; // En yüksek öncelikli alarm tetiklendiğinde alt seviyeyi tetikleme
+                        break; // Bu gruptaki en kritik kural tetiklendi, alt kurallara bakma
                     }
                 }
 
-                // Eğer o metriğe ait hiçbir kural tetiklenmediyse, o metriğe ait aktif alarmları çöz
+                // Grupta hiçbir kural tetiklenmediyse ve aktif alarm varsa çözüldü (RESOLVED) yap
                 if (!anyTriggeredInGroup)
                 {
                     foreach (var rule in sortedRules)
@@ -114,6 +117,44 @@ namespace IndustrialDataLogger.Services
                         await TryResolveAlarmAsync(rule.AlarmType, mId, cancellationToken);
                     }
                 }
+            }
+
+            // 2. Zaman Serisi İstatistiksel Anomali Tespiti (Z-Score & Rate of Change)
+            try
+            {
+                var anomalyResults = _anomalyEngine.AnalyzeSensorData(data, mId);
+                foreach (var anom in anomalyResults)
+                {
+                    string anomAlarmType = $"ANOMALY_{anom.MetricName.ToUpperInvariant()}";
+                    if (anom.HasAnomaly)
+                    {
+                        await RaiseOrUpdateAlarmAsync(
+                            anomAlarmType,
+                            AlarmSeverity.Warning,
+                            anom.AnomalyReason,
+                            anom.CurrentValue,
+                            anom.Mean,
+                            mId,
+                            cancellationToken);
+
+                        await _eventLogService.LogEventAsync(
+                            "ANOMALY_DETECTED",
+                            $"[Makine #{mId}] {anom.AnomalyReason}",
+                            AlarmSeverity.Warning,
+                            "AnomalyEngine",
+                            cancellationToken);
+
+                        await _hubContext.Clients.All.SendAsync("ReceiveAnomalyEvent", anom, cancellationToken);
+                    }
+                    else
+                    {
+                        await TryResolveAlarmAsync(anomAlarmType, mId, cancellationToken);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Anomali tespiti sırasında hata oluştu: {Message}", ex.Message);
             }
         }
 

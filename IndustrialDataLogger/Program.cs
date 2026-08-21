@@ -161,6 +161,7 @@ builder.Services.AddSingleton<IPlcConnectionManager, PlcConnectionManager>();
 builder.Services.AddSingleton<IPlcService, HybridPlcService>();
 builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
 builder.Services.AddSingleton<IEventLogService, EventLogService>();
+builder.Services.AddSingleton<IAnomalyDetectionEngine, AnomalyDetectionEngine>();
 builder.Services.AddSingleton<IAlarmService, AlarmService>();
 builder.Services.AddSingleton<IDigitalTwinService, DigitalTwinService>();
 builder.Services.AddSingleton<ITagConfigService, TagConfigService>();

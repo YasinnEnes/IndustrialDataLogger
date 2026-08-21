@@ -332,6 +332,41 @@
                 </div>
             </div>
 
+            <!-- İstatistiksel Anomali Tespit Paneli (Z-Score & Rate of Change Engine) -->
+            <div class="card card-custom p-3 mb-3 bg-white" id="anomaly-engine-card">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="fw-bold mb-0 text-dark">
+                        <i class="fa-solid fa-wave-square text-purple me-2" style="color: #8b5cf6;"></i>İstatistiksel Anomali Takip Motoru (Z-Score & Rate of Change)
+                    </h6>
+                    <span class="badge bg-success" id="anomaly-global-badge" style="font-size: 0.75rem;">
+                        <i class="fa-solid fa-shield-halved me-1"></i>Anomali Yok (Normal Dağılım)
+                    </span>
+                </div>
+
+                <div class="row g-2 align-items-center">
+                    <div class="col-md-3 col-6 text-center border-end">
+                        <span class="text-muted small fw-semibold">SICAKLIK Z-SCORE</span>
+                        <div class="h5 fw-bold text-dark mb-0 mt-1" id="anomaly-temp-zscore">+0.00 σ</div>
+                        <small class="text-muted" style="font-size: 0.70rem;">μ: <span id="anomaly-temp-mean">--</span> | σ: <span id="anomaly-temp-std">--</span></small>
+                    </div>
+                    <div class="col-md-3 col-6 text-center border-end">
+                        <span class="text-muted small fw-semibold">SICAKLIK EĞİMİ (RoC)</span>
+                        <div class="h5 fw-bold text-dark mb-0 mt-1" id="anomaly-temp-roc">0.00 °C/sn</div>
+                        <small class="text-muted" style="font-size: 0.70rem;">Maks Eşik: 2.50 °C/sn</small>
+                    </div>
+                    <div class="col-md-3 col-6 text-center border-end">
+                        <span class="text-muted small fw-semibold">BASINÇ Z-SCORE</span>
+                        <div class="h5 fw-bold text-dark mb-0 mt-1" id="anomaly-press-zscore">+0.00 σ</div>
+                        <small class="text-muted" style="font-size: 0.70rem;">μ: <span id="anomaly-press-mean">--</span> | σ: <span id="anomaly-press-std">--</span></small>
+                    </div>
+                    <div class="col-md-3 col-6 text-center">
+                        <span class="text-muted small fw-semibold">BASINÇ EĞİMİ (RoC)</span>
+                        <div class="h5 fw-bold text-dark mb-0 mt-1" id="anomaly-press-roc">0.00 bar/sn</div>
+                        <small class="text-muted" style="font-size: 0.70rem;">Maks Eşik: 1.20 bar/sn</small>
+                    </div>
+                </div>
+            </div>
+
             <!-- GÜN 5 (Sprint 5.1 - 5.8): OEE & Üretim Verimliliği Paneli -->
             <div class="card card-custom p-3 mb-3" id="oee-panel-card">
                 <div class="d-flex justify-content-between align-items-center mb-2">
@@ -958,6 +993,90 @@
         hubConnection.on("ReceiveDigitalTwinState", function (state) {
             updateDigitalTwinFullState(state);
         });
+
+        // GÜN 1: Statistical Time-Series Anomaly Detection Event
+        hubConnection.on("ReceiveAnomalyEvent", function (anomaly) {
+            updateAnomalyVisuals(anomaly);
+        });
+
+        function updateAnomalyVisuals(anom) {
+            if (!anom) return;
+            if (anom.metricName === 'Temperature') {
+                let zEl = document.getElementById('anomaly-temp-zscore');
+                let rEl = document.getElementById('anomaly-temp-roc');
+                if (zEl) {
+                    zEl.innerText = (anom.zScore >= 0 ? '+' : '') + anom.zScore.toFixed(2) + ' σ';
+                    zEl.className = anom.isZScoreAnomaly ? 'h5 fw-bold text-danger mb-0 mt-1' : 'h5 fw-bold text-dark mb-0 mt-1';
+                }
+                if (rEl) {
+                    rEl.innerText = (anom.rateOfChange >= 0 ? '+' : '') + anom.rateOfChange.toFixed(2) + ' °C/sn';
+                    rEl.className = anom.isRateOfChangeAnomaly ? 'h5 fw-bold text-danger mb-0 mt-1' : 'h5 fw-bold text-dark mb-0 mt-1';
+                }
+                let mEl = document.getElementById('anomaly-temp-mean');
+                let sEl = document.getElementById('anomaly-temp-std');
+                if (mEl) mEl.innerText = anom.mean.toFixed(1) + '°C';
+                if (sEl) sEl.innerText = anom.standardDeviation.toFixed(2);
+            } else if (anom.metricName === 'Pressure') {
+                let zEl = document.getElementById('anomaly-press-zscore');
+                let rEl = document.getElementById('anomaly-press-roc');
+                if (zEl) {
+                    zEl.innerText = (anom.zScore >= 0 ? '+' : '') + anom.zScore.toFixed(2) + ' σ';
+                    zEl.className = anom.isZScoreAnomaly ? 'h5 fw-bold text-danger mb-0 mt-1' : 'h5 fw-bold text-dark mb-0 mt-1';
+                }
+                if (rEl) {
+                    rEl.innerText = (anom.rateOfChange >= 0 ? '+' : '') + anom.rateOfChange.toFixed(2) + ' bar/sn';
+                    rEl.className = anom.isRateOfChangeAnomaly ? 'h5 fw-bold text-danger mb-0 mt-1' : 'h5 fw-bold text-dark mb-0 mt-1';
+                }
+                let mEl = document.getElementById('anomaly-press-mean');
+                let sEl = document.getElementById('anomaly-press-std');
+                if (mEl) mEl.innerText = anom.mean.toFixed(1) + 'b';
+                if (sEl) sEl.innerText = anom.standardDeviation.toFixed(2);
+            }
+
+            let gBadge = document.getElementById('anomaly-global-badge');
+            if (gBadge) {
+                if (anom.hasAnomaly) {
+                    gBadge.className = "badge bg-danger";
+                    gBadge.innerHTML = '<i class="fa-solid fa-triangle-exclamation me-1"></i>ANOMALİ TESPİT EDİLDİ!';
+                } else {
+                    gBadge.className = "badge bg-success";
+                    gBadge.innerHTML = '<i class="fa-solid fa-shield-halved me-1"></i>Anomali Yok (Normal Dağılım)';
+                }
+            }
+        }
+
+        async function fetchAnomalyStats() {
+            try {
+                let res = await fetch('http://localhost:5000/api/Sensor/anomaly-stats?machineId=1');
+                if (res.ok) {
+                    let stats = await res.json();
+                    if (stats.Temperature) {
+                        updateAnomalyVisuals({
+                            metricName: 'Temperature',
+                            zScore: stats.Temperature.lastZScore || 0,
+                            rateOfChange: stats.Temperature.lastRateOfChange || 0,
+                            mean: stats.Temperature.mean || 0,
+                            standardDeviation: stats.Temperature.standardDeviation || 0,
+                            isZScoreAnomaly: Math.abs(stats.Temperature.lastZScore || 0) >= 2.58,
+                            isRateOfChangeAnomaly: Math.abs(stats.Temperature.lastRateOfChange || 0) >= 2.5,
+                            hasAnomaly: Math.abs(stats.Temperature.lastZScore || 0) >= 2.58 || Math.abs(stats.Temperature.lastRateOfChange || 0) >= 2.5
+                        });
+                    }
+                    if (stats.Pressure) {
+                        updateAnomalyVisuals({
+                            metricName: 'Pressure',
+                            zScore: stats.Pressure.lastZScore || 0,
+                            rateOfChange: stats.Pressure.lastRateOfChange || 0,
+                            mean: stats.Pressure.mean || 0,
+                            standardDeviation: stats.Pressure.standardDeviation || 0,
+                            isZScoreAnomaly: Math.abs(stats.Pressure.lastZScore || 0) >= 2.58,
+                            isRateOfChangeAnomaly: Math.abs(stats.Pressure.lastRateOfChange || 0) >= 1.2,
+                            hasAnomaly: Math.abs(stats.Pressure.lastZScore || 0) >= 2.58 || Math.abs(stats.Pressure.lastRateOfChange || 0) >= 1.2
+                        });
+                    }
+                }
+            } catch (e) { }
+        }
 
         hubConnection.onreconnecting((error) => {
             console.warn("SignalR bağlantısı koptu, yeniden bağlanılıyor...", error);

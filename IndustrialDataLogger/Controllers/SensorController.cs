@@ -22,6 +22,7 @@ namespace IndustrialDataLogger.Controllers
         private readonly IPlcConnectionManager _plcConnectionManager;
         private readonly IndustrialDbContext _dbContext;
         private readonly IEventLogService _eventLogService;
+        private readonly IAnomalyDetectionEngine _anomalyEngine;
         private readonly ILogger<SensorController> _logger;
 
         public SensorController(
@@ -29,13 +30,22 @@ namespace IndustrialDataLogger.Controllers
             IPlcConnectionManager plcConnectionManager,
             IndustrialDbContext dbContext,
             IEventLogService eventLogService,
+            IAnomalyDetectionEngine anomalyEngine,
             ILogger<SensorController> logger)
         {
             _plcService = plcService;
             _plcConnectionManager = plcConnectionManager;
             _dbContext = dbContext;
             _eventLogService = eventLogService;
+            _anomalyEngine = anomalyEngine;
             _logger = logger;
+        }
+
+        [HttpGet("anomaly-stats")]
+        public IActionResult GetAnomalyStats([FromQuery] int machineId = 1)
+        {
+            var stats = _anomalyEngine.GetAllMetricsForMachine(machineId);
+            return Ok(stats);
         }
 
         [HttpGet("latest")]
