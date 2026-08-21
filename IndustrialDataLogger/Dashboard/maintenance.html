@@ -13,10 +13,17 @@
     <!-- SignalR Client -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script>
 
+    <!-- Yetki & Oturum Kontrolü (Auth Guard) -->
+    <script>
+        const token = sessionStorage.getItem('token') || sessionStorage.getItem('jwtToken');
+        const userRole = sessionStorage.getItem('userRole');
+
+        if (!token) {
+            window.location.replace('login.html');
+        }
+    </script>
+
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f1f5f9;
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f1f6f4;
@@ -625,7 +632,12 @@
 
         hubConnection.start().catch(err => console.warn("SignalR bağlantı hatası:", err));
 
-        // İlk Yükleme
+        // Kullanıcı Rolü Gösterimi & İlk Yükleme
+        const roleBadge = document.getElementById('logged-user-role');
+        if (roleBadge) {
+            roleBadge.innerText = userRole || 'Programcı';
+        }
+
         loadTasksAndStats();
     </script>
 </body>
