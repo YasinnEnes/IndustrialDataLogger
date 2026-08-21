@@ -17,20 +17,24 @@
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f1f5f9;
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f6f4;
             color: #1e293b;
         }
 
         .sidebar {
             min-height: 100vh;
-            background: #1e293b;
+            background: linear-gradient(180deg, #003328 0%, #004B3B 100%);
             color: #fff;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+            box-shadow: 2px 0 10px rgba(0, 75, 59, 0.15);
         }
 
         .sidebar a {
-            color: #94a3b8;
+            color: #c4ded7;
             text-decoration: none;
             padding: 12px 20px;
             display: flex;
@@ -42,15 +46,49 @@
         }
 
         .sidebar a:hover, .sidebar a.active {
-            background: #3b82f6;
+            background: #006650;
             color: #fff;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn-teal {
+            background-color: #004B3B !important;
+            border-color: #004B3B !important;
+            color: #ffffff !important;
+            transition: all 0.2s ease;
+        }
+
+        .btn-teal:hover {
+            background-color: #00614c !important;
+            border-color: #00614c !important;
+            color: #ffffff !important;
+            transform: translateY(-1px);
+        }
+
+        .btn-outline-teal {
+            color: #004B3B !important;
+            border-color: #004B3B !important;
+        }
+
+        .btn-outline-teal:hover, .btn-outline-teal.active {
+            background-color: #004B3B !important;
+            color: #ffffff !important;
+        }
+
+        .text-teal-brand {
+            color: #004B3B !important;
+        }
+
+        .bg-teal-subtle {
+            background-color: rgba(0, 75, 59, 0.1) !important;
+            color: #004B3B !important;
         }
 
         .card-custom {
             border: none;
             border-radius: 14px;
             background-color: #ffffff;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+            box-shadow: 0 4px 14px rgba(0, 75, 59, 0.05);
             transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
 
@@ -84,7 +122,7 @@
         }
 
         .status-badge-inprogress {
-            background-color: #3b82f6;
+            background-color: #004B3B;
             color: #ffffff;
         }
 
@@ -94,7 +132,7 @@
         }
 
         .table-hover tbody tr:hover {
-            background-color: #f8fafc;
+            background-color: #f6faf8;
         }
 
         @media (max-width: 992px) {
@@ -116,7 +154,7 @@
         <!-- Sidebar Navigation -->
         <div class="sidebar d-none d-lg-flex p-3" style="width: 250px; position: fixed; top: 0; bottom: 0;">
             <div>
-                <h4 class="text-white text-center py-3 mb-4 border-bottom border-secondary border-opacity-25">
+                <h4 class="text-white text-center py-3 mb-4 border-bottom border-white border-opacity-10">
                     <i class="fa-solid fa-industry text-warning me-2"></i>IoT Panel
                 </h4>
                 <nav id="sidebar-nav">
@@ -127,12 +165,12 @@
                 </nav>
             </div>
 
-            <div class="p-3 bg-black bg-opacity-25 rounded-3 mb-3 border border-secondary border-opacity-25">
+            <div class="p-3 bg-black bg-opacity-25 rounded-3 mb-3 border border-white border-opacity-10">
                 <div class="d-flex justify-content-between align-items-center mb-1">
                     <span class="text-muted small">Oturum:</span>
-                    <span id="logged-user-role" class="badge bg-primary">Programcı</span>
+                    <span id="logged-user-role" class="badge" style="background-color: #006650;">Programcı</span>
                 </div>
-                <button onclick="logout()" class="btn btn-outline-danger btn-sm w-100 mt-2">
+                <button onclick="logout()" class="btn btn-outline-light btn-sm w-100 mt-2">
                     <i class="fa-solid fa-arrow-right-from-bracket me-1"></i> Çıkış Yap
                 </button>
             </div>
@@ -144,12 +182,12 @@
             <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
                 <div>
                     <h3 class="fw-bold mb-0 text-dark">
-                        <i class="fa-solid fa-wrench text-primary me-2"></i>Bakım Yönetimi & İş Emri Entegrasyonu
+                        <i class="fa-solid fa-wrench text-teal-brand me-2"></i>Bakım Yönetimi & İş Emri Entegrasyonu
                     </h3>
                     <small class="text-muted">Kritik alarmlar ve anomali tespitiyle otomatik tetiklenen iş emirlerini yönetin ve kapatın.</small>
                 </div>
                 <div class="d-flex align-items-center gap-2">
-                    <button class="btn btn-primary btn-sm fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#createTaskModal">
+                    <button class="btn btn-teal btn-sm fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#createTaskModal">
                         <i class="fa-solid fa-plus me-1"></i>Yeni İş Emri Aç
                     </button>
                     <button class="btn btn-outline-secondary btn-sm" onclick="loadTasksAndStats()" title="Yenile">
@@ -161,13 +199,13 @@
             <!-- KPI Summary Cards Row -->
             <div class="row g-3 mb-4">
                 <div class="col-xl-3 col-sm-6">
-                    <div class="card card-custom p-3 border-start border-4 border-primary">
+                    <div class="card card-custom p-3 border-start border-4" style="border-color: #004B3B !important;">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
                                 <span class="text-muted small fw-semibold">TOPLAM İŞ EMRİ</span>
-                                <h3 class="fw-bold mb-0 mt-1" id="stat-total">0</h3>
+                                <h3 class="fw-bold mb-0 mt-1 text-teal-brand" id="stat-total">0</h3>
                             </div>
-                            <div class="p-3 bg-primary bg-opacity-10 text-primary rounded-circle">
+                            <div class="p-3 bg-teal-subtle rounded-circle">
                                 <i class="fa-solid fa-list-check fa-lg"></i>
                             </div>
                         </div>
@@ -221,14 +259,14 @@
             <div class="card card-custom p-3 mb-4">
                 <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
                     <div class="btn-group btn-group-sm" role="group">
-                        <button type="button" class="btn btn-primary filter-status-btn active" onclick="filterByStatus(null, this)">Tümü</button>
-                        <button type="button" class="btn btn-outline-secondary filter-status-btn" onclick="filterByStatus('Open', this)">🔴 Açık</button>
-                        <button type="button" class="btn btn-outline-secondary filter-status-btn" onclick="filterByStatus('InProgress', this)">🔵 İnceleniyor</button>
-                        <button type="button" class="btn btn-outline-secondary filter-status-btn" onclick="filterByStatus('Resolved', this)">🟢 Çözüldü</button>
+                        <button type="button" class="btn btn-teal filter-status-btn active" onclick="filterByStatus(null, this)">Tümü</button>
+                        <button type="button" class="btn btn-outline-teal filter-status-btn" onclick="filterByStatus('Open', this)">🔴 Açık</button>
+                        <button type="button" class="btn btn-outline-teal filter-status-btn" onclick="filterByStatus('InProgress', this)">🔵 İnceleniyor</button>
+                        <button type="button" class="btn btn-outline-teal filter-status-btn" onclick="filterByStatus('Resolved', this)">🟢 Çözüldü</button>
                     </div>
 
                     <div class="d-flex align-items-center gap-2">
-                        <select class="form-select form-select-sm" id="filter-priority-select" onchange="loadTasksAndStats()" style="width: 140px;">
+                        <select class="form-select form-select-sm border-secondary border-opacity-25" id="filter-priority-select" onchange="loadTasksAndStats()" style="width: 140px;">
                             <option value="">Tüm Öncelikler</option>
                             <option value="Critical">Kritik</option>
                             <option value="High">Yüksek</option>
@@ -241,7 +279,7 @@
                 <!-- Table -->
                 <div class="table-responsive">
                     <table class="table table-hover align-middle mb-0" style="font-size: 0.88rem;">
-                        <thead class="table-light text-muted">
+                        <thead class="text-muted" style="background-color: #eef5f3;">
                             <tr>
                                 <th scope="col" style="width: 80px;">İş Emri #</th>
                                 <th scope="col" style="width: 140px;">Makine</th>
@@ -257,7 +295,7 @@
                         <tbody id="maintenance-table-body">
                             <tr>
                                 <td colspan="9" class="text-center py-4 text-muted">
-                                    <i class="fa-solid fa-spinner fa-spin me-2"></i>İş emirleri yükleniyor...
+                                    <i class="fa-solid fa-spinner fa-spin me-2 text-teal-brand"></i>İş emirleri yükleniyor...
                                 </td>
                             </tr>
                         </tbody>
@@ -270,15 +308,15 @@
     <!-- Modal: Manuel İş Emri Aç -->
     <div class="modal fade" id="createTaskModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title fw-bold"><i class="fa-solid fa-plus text-primary me-2"></i>Yeni Bakım İş Emri Aç</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header text-white" style="background: linear-gradient(135deg, #00362a 0%, #004B3B 100%);">
+                    <h5 class="modal-title fw-bold"><i class="fa-solid fa-plus me-2"></i>Yeni Bakım İş Emri Aç</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <form id="create-task-form">
                         <div class="mb-3">
-                            <label class="form-label small fw-bold">Makine</label>
+                            <label class="form-label small fw-bold text-teal-brand">Makine</label>
                             <select class="form-select form-select-sm" id="modal-machine-id">
                                 <option value="1">#M1 - Siemens S7-1200 Akıllı Ünite</option>
                                 <option value="2">#M2 - Kuka Robotik Besleme Hücresi</option>
@@ -287,12 +325,12 @@
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label small fw-bold">Bileşen / Alt Sistem</label>
+                            <label class="form-label small fw-bold text-teal-brand">Bileşen / Alt Sistem</label>
                             <input type="text" class="form-control form-control-sm" id="modal-component" placeholder="Örn: Soğutma Sistemi, Hidrolik Pompa" required>
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label small fw-bold">Öncelik Seviyesi</label>
+                            <label class="form-label small fw-bold text-teal-brand">Öncelik Seviyesi</label>
                             <select class="form-select form-select-sm" id="modal-priority">
                                 <option value="Low">Düşük (Planlı Periyodik)</option>
                                 <option value="Medium" selected>Orta (Genel Bakım)</option>
@@ -302,19 +340,19 @@
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label small fw-bold">Atanan Sorumlu Operatör</label>
+                            <label class="form-label small fw-bold text-teal-brand">Atanan Sorumlu Operatör</label>
                             <input type="text" class="form-control form-control-sm" id="modal-assigned-to" placeholder="Örn: Ahmet Usta, Bakım Ekibi A">
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label small fw-bold">Arıza / Bakım Nedeni</label>
+                            <label class="form-label small fw-bold text-teal-brand">Arıza / Bakım Nedeni</label>
                             <textarea class="form-control form-control-sm" id="modal-reason" rows="3" placeholder="Arıza detayını veya yapılacak müdahaleyi açıklayın..." required></textarea>
                         </div>
                     </form>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">İptal</button>
-                    <button type="button" class="btn btn-primary btn-sm fw-bold" onclick="submitCreateTask()">
+                    <button type="button" class="btn btn-teal btn-sm fw-bold shadow-sm" onclick="submitCreateTask()">
                         <i class="fa-solid fa-check me-1"></i>İş Emrini Kaydet
                     </button>
                 </div>
@@ -325,10 +363,10 @@
     <!-- Modal: İşi Kapat / Çözüldü -->
     <div class="modal fade" id="resolveTaskModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title fw-bold"><i class="fa-solid fa-circle-check text-success me-2"></i>İş Emrini Kapat / Çözüldü</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header text-white" style="background: linear-gradient(135deg, #00362a 0%, #004B3B 100%);">
+                    <h5 class="modal-title fw-bold"><i class="fa-solid fa-circle-check text-warning me-2"></i>İş Emrini Kapat / Çözüldü</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="resolve-task-id">
@@ -336,13 +374,13 @@
                         İş emri bilgisi...
                     </div>
                     <div class="mb-3">
-                        <label class="form-label small fw-bold">Müdahale & Çözüm Notları</label>
+                        <label class="form-label small fw-bold text-teal-brand">Müdahale & Çözüm Notları</label>
                         <textarea class="form-control form-control-sm" id="resolve-notes" rows="3" placeholder="Yapılan onarım, parça değişimi veya müdahale özetini giriniz..." required></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Vazgeç</button>
-                    <button type="button" class="btn btn-success btn-sm fw-bold" onclick="submitResolveTask()">
+                    <button type="button" class="btn btn-teal btn-sm fw-bold shadow-sm" onclick="submitResolveTask()">
                         <i class="fa-solid fa-check me-1"></i>Kapat ve Tamamla
                     </button>
                 </div>
@@ -365,12 +403,12 @@
         function filterByStatus(status, btnEl) {
             currentFilterStatus = status;
             document.querySelectorAll('.filter-status-btn').forEach(b => {
-                b.classList.remove('btn-primary', 'active');
-                b.classList.add('btn-outline-secondary');
+                b.classList.remove('btn-teal', 'active');
+                b.classList.add('btn-outline-teal');
             });
             if (btnEl) {
-                btnEl.classList.remove('btn-outline-secondary');
-                btnEl.classList.add('btn-primary', 'active');
+                btnEl.classList.remove('btn-outline-teal');
+                btnEl.classList.add('btn-teal', 'active');
             }
             loadTasksAndStats();
         }
