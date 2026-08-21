@@ -2,15 +2,23 @@
     "version": "2.0.0",
     "tasks": [
         {
+            "label": "Kill Previous Server",
+            "type": "shell",
+            "command": "powershell -Command \"Get-Process -Name IndustrialDataLogger -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue\"",
+            "problemMatcher": []
+        },
+        {
             "label": "Run IndustrialDataLogger",
             "command": "dotnet",
             "type": "process",
+            "dependsOn": "Kill Previous Server",
             "args": [
                 "run",
                 "--project",
                 "${workspaceFolder}/IndustrialDataLogger/IndustrialDataLogger.csproj"
             ],
             "problemMatcher": "$msCompile",
+            "isBackground": true,
             "presentation": {
                 "reveal": "always",
                 "panel": "new"
@@ -24,6 +32,7 @@
             "label": "build",
             "command": "dotnet",
             "type": "process",
+            "dependsOn": "Kill Previous Server",
             "args": [
                 "build",
                 "${workspaceFolder}/IndustrialDataLogger/IndustrialDataLogger.csproj",

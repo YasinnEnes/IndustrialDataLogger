@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": ".NET Core Launch (IndustrialDataLogger)",
+            "name": "IndustrialDataLogger (Run Without Debugging - Ctrl+F5)",
             "type": "coreclr",
             "request": "launch",
             "preLaunchTask": "build",
@@ -17,15 +17,7 @@
             },
             "env": {
                 "ASPNETCORE_ENVIRONMENT": "Development"
-            },
-            "sourceFileMap": {
-                "/Views": "${workspaceFolder}/Views"
             }
-        },
-        {
-            "name": ".NET Core Attach",
-            "type": "coreclr",
-            "request": "attach"
         }
     ]
 }
