@@ -369,4 +369,23 @@ app.MapHealthChecks("/healthz");
 app.MapHub<MonitoringHub>("/sensorHub");
 
 var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
+
+// Geliştirme ortamında sunucu ayağa kalktığında tarayıcıyı otomatik aç
+if (app.Environment.IsDevelopment())
+{
+    app.Lifetime.ApplicationStarted.Register(() =>
+    {
+        try
+        {
+            var browserUrl = $"http://localhost:{port}/index.html";
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = browserUrl,
+                UseShellExecute = true
+            });
+        }
+        catch { }
+    });
+}
+
 app.Run($"http://0.0.0.0:{port}");
