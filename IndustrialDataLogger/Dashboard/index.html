@@ -192,31 +192,101 @@
             transition: stroke-dashoffset 0.5s ease, stroke 0.4s ease;
         }
 
-        @media (max-width: 992px) {
-            .sidebar {
-                width: 100%;
-                position: relative;
-                min-height: auto;
-            }
-            .main-content {
-                margin-left: 0;
-                padding: 16px;
-            }
+        /* Asset Tree Navigation */
+        .tree-container {
+            font-size: 0.82rem;
+            color: #d6c5c2;
         }
+        .tree-factory-title {
+            font-weight: 700;
+            color: #ffecd1;
+            padding: 6px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255, 255, 255, 0.05);
+            margin-top: 6px;
+            transition: all 0.2s ease;
+        }
+        .tree-factory-title:hover {
+            background: rgba(255, 255, 255, 0.12);
+        }
+        .tree-line-title {
+            font-weight: 600;
+            color: #e2d9d7;
+            padding: 4px 8px 4px 18px;
+            border-radius: 5px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: all 0.2s ease;
+        }
+        .tree-line-title:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+        }
+        .tree-machine-item {
+            padding: 5px 8px 5px 28px;
+            border-radius: 5px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            color: #cbd5e1;
+            transition: all 0.2s ease;
+        }
+        .tree-machine-item:hover {
+            background: #ba6a36;
+            color: #fff;
+        }
+        .tree-machine-item.active-machine {
+            background: #ba6a36 !important;
+            color: #fff !important;
+            font-weight: 700;
+            box-shadow: 0 2px 6px rgba(186, 106, 54, 0.4);
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-dot.online { background-color: #10b981; box-shadow: 0 0 6px #10b981; }
+        .status-dot.warning { background-color: #f59e0b; box-shadow: 0 0 6px #f59e0b; }
+        .status-dot.critical { background-color: #ef4444; box-shadow: 0 0 6px #ef4444; animation: pulse-border 1.2s infinite; }
+        .status-dot.offline { background-color: #94a3b8; }
     </style>
 </head>
 <body>
 
     <div class="container-fluid p-0">
         <!-- Sidebar Navigation -->
-        <div class="sidebar d-none d-lg-flex p-3">
+        <div class="sidebar d-none d-lg-flex p-3" style="width: 260px; overflow-y: auto;">
             <div>
-                <h4 class="text-white text-center py-3 mb-4 border-bottom border-secondary border-opacity-25">
+                <h4 class="text-white text-center py-3 mb-3 border-bottom border-secondary border-opacity-25">
                     <i class="fa-solid fa-industry text-warning me-2"></i>IoT Panel
                 </h4>
-                <nav id="sidebar-nav">
+                <nav id="sidebar-nav" class="mb-3">
                     <a href="index.html" class="active"><i class="fa-solid fa-chart-line me-2"></i> Grafikler & Dijital İkiz</a>
                 </nav>
+
+                <!-- Varlık Ağacı (Asset Tree) -->
+                <div class="p-2 bg-black bg-opacity-25 rounded-3 mb-3 border border-secondary border-opacity-25">
+                    <div class="d-flex justify-content-between align-items-center mb-2 px-1">
+                        <span class="small fw-bold text-warning" style="font-size: 0.78rem;">
+                            <i class="fa-solid fa-sitemap me-1"></i> Varlık Ağacı (Asset Tree)
+                        </span>
+                        <button class="btn btn-link btn-sm text-light p-0 text-decoration-none" onclick="loadAssetTree()" title="Yenile">
+                            <i class="fa-solid fa-arrows-rotate fa-xs"></i>
+                        </button>
+                    </div>
+                    <div id="asset-tree-container" class="tree-container" style="max-height: 220px; overflow-y: auto;">
+                        <div class="text-muted small text-center py-2"><i class="fa-solid fa-spinner fa-spin me-1"></i>Ağaç yükleniyor...</div>
+                    </div>
+                </div>
             </div>
 
             <!-- PLC Management Section -->
@@ -251,17 +321,97 @@
             <!-- Header Bar -->
             <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-3">
                 <div>
-                    <h2 class="fw-bold mb-1" style="color: #261311;">Endüstriyel Canlı İzleme & Dijital İkiz</h2>
-                    <p class="text-muted mb-0 small">Siemens S7-1200 PLC Gerçek Zamanlı Telemetri Paneli</p>
+                    <div class="d-flex align-items-center gap-2">
+                        <h2 class="fw-bold mb-0" style="color: #261311;" id="main-panel-title">Endüstriyel Canlı İzleme & Dijital İkiz</h2>
+                        <span class="badge bg-dark px-2 py-1" id="selected-machine-badge"><i class="fa-solid fa-microchip me-1 text-warning"></i> #M1 - Siemens S7-1200</span>
+                    </div>
+                    <p class="text-muted mb-0 small" id="main-panel-subtitle">Gebze Ana Üretim Kampüsü > Montaj & İşleme Hattı A</p>
                 </div>
-                <div class="d-flex align-items-center gap-3">
-                    <div class="form-check form-switch bg-white p-2 px-3 rounded-pill shadow-sm border d-flex align-items-center">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button type="button" class="btn btn-outline-dark fw-semibold active" id="btn-view-machine" onclick="switchView('machine')">
+                            <i class="fa-solid fa-gauge me-1"></i>Makine İkizi
+                        </button>
+                        <button type="button" class="btn btn-outline-primary fw-semibold" id="btn-view-factory" onclick="switchView('factory')">
+                            <i class="fa-solid fa-city me-1"></i>Fabrika Genel Bakış
+                        </button>
+                    </div>
+                    <div class="form-check form-switch bg-white p-2 px-3 rounded-pill shadow-sm border d-flex align-items-center mb-0">
                         <input class="form-check-input ms-0 me-2" type="checkbox" id="modeSwitch" checked style="width: 2.6em; height: 1.3em; cursor: pointer;">
                         <label class="form-check-label fw-bold text-dark small" id="modeLabel" for="modeSwitch">Simülasyon Modu</label>
                     </div>
                     <span id="connection-status" class="badge bg-secondary p-2 px-3 rounded-pill"><i class="fa-solid fa-circle-dot me-1"></i> Kontrol Ediliyor...</span>
                 </div>
             </div>
+
+            <!-- GÜN 5: Global Fabrika Özet Ekranı (Factory Overview Panel) -->
+            <div id="factory-overview-section" class="d-none mb-4">
+                <div class="card card-custom p-3 mb-3 border-start border-4 border-primary bg-white">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                        <div>
+                            <h5 class="fw-bold text-dark mb-0"><i class="fa-solid fa-industry text-primary me-2"></i>Global Tesis ve Üretim Hatları Özeti</h5>
+                            <small class="text-muted">Tüm fabrikaların, hatların ve bağlı makinelerin anlık sağlık ve operasyonel metrikleri.</small>
+                        </div>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="loadFactoryOverview()"><i class="fa-solid fa-rotate me-1"></i>Yenile</button>
+                    </div>
+
+                    <!-- 4'lü Üst KPI Kartları -->
+                    <div class="row g-3 mb-3">
+                        <div class="col-xl-3 col-sm-6">
+                            <div class="p-3 bg-light rounded-3 border">
+                                <span class="text-muted small fw-bold">TESİSLER & HATLAR</span>
+                                <div class="fs-4 fw-bold text-dark mt-1"><span id="ov-factories">2</span> Kampüs / <span id="ov-lines">3</span> Hat</div>
+                                <div class="small text-muted mt-1">Aktif Üretim Ağı</div>
+                            </div>
+                        </div>
+                        <div class="col-xl-3 col-sm-6">
+                            <div class="p-3 bg-light rounded-3 border">
+                                <span class="text-muted small fw-bold">MAKİNE FİLOSU & ÇEVRİMİÇİ</span>
+                                <div class="fs-4 fw-bold text-success mt-1"><span id="ov-online-machines">3</span> / <span id="ov-total-machines">3</span> Makine</div>
+                                <div class="small text-muted mt-1">%<span id="ov-online-ratio">100.0</span> Çevrimiçi Oranı</div>
+                            </div>
+                        </div>
+                        <div class="col-xl-3 col-sm-6">
+                            <div class="p-3 bg-light rounded-3 border">
+                                <span class="text-muted small fw-bold">AKTİF ALARMLAR</span>
+                                <div class="fs-4 fw-bold text-danger mt-1" id="ov-total-alarms">0 Alarm</div>
+                                <div class="small text-muted mt-1"><span id="ov-crit-alarms" class="text-danger fw-bold">0</span> Kritik / <span id="ov-warn-alarms" class="text-warning fw-bold">0</span> Uyarı</div>
+                            </div>
+                        </div>
+                        <div class="col-xl-3 col-sm-6">
+                            <div class="p-3 bg-light rounded-3 border">
+                                <span class="text-muted small fw-bold">FABRİKA GENEL SAĞLIK SKORU</span>
+                                <div class="fs-4 fw-bold text-primary mt-1" id="ov-overall-health">94.5%</div>
+                                <div class="small text-muted mt-1">Durum: <b id="ov-health-status" class="text-success">Mükemmel</b></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Üretim Hatları Tablosu -->
+                    <h6 class="fw-bold text-dark mt-2 mb-2"><i class="fa-solid fa-list-ol me-1 text-secondary"></i>Üretim Hatları Performans Tablosu</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle mb-0" style="font-size: 0.84rem;">
+                            <thead class="table-light text-muted">
+                                <tr>
+                                    <th>Hat Kodu</th>
+                                    <th>Hat Adı</th>
+                                    <th>Tesis / Kampüs</th>
+                                    <th>Makineler</th>
+                                    <th>Ortalama Sağlık</th>
+                                    <th>Aktif Alarm</th>
+                                    <th>Durum</th>
+                                </tr>
+                            </thead>
+                            <tbody id="factory-lines-table-body">
+                                <tr><td colspan="7" class="text-center text-muted py-2">Yükleniyor...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Makine Görünüm Konteyneri (Live Digital Twin) -->
+            <div id="machine-view-container">
 
             <!-- GÜN 1 (Sprint 1.4 & 1.5): Simülasyon Senaryo Çubuğu (Hızlı Test) -->
             <div class="card card-custom p-2 px-3 mb-3 bg-white d-flex flex-row flex-wrap justify-content-between align-items-center gap-2">
@@ -713,6 +863,7 @@
                     </div>
                 </div>
             </div>
+            </div> <!-- /#machine-view-container -->
         </div>
     </div>
 
@@ -866,7 +1017,7 @@
             if (btnEl) btnEl.classList.add('active');
 
             try {
-                let res = await fetch(`http://localhost:5000/api/Sensor/history?limit=${limit}`);
+                let res = await fetch(`http://localhost:5000/api/Sensor/history?machineId=${selectedMachineId}&limit=${limit}`);
                 if (res.ok) {
                     let history = await res.json();
                     history.reverse();
@@ -1186,7 +1337,7 @@
 
         async function fetchDigitalTwinState() {
             try {
-                let res = await fetch('http://localhost:5000/api/digitaltwin/state');
+                let res = await fetch(`http://localhost:5000/api/digitaltwin/state?machineId=${selectedMachineId}`);
                 if (res.ok) {
                     let state = await res.json();
                     updateDigitalTwinFullState(state);
@@ -1688,6 +1839,196 @@
             }
         }
 
+        // ==========================================
+        // GÜN 5: Varlık Ağacı (Asset Tree) & Global Fabrika Özeti
+        // ==========================================
+        let selectedMachineId = 1;
+        let assetTreeCache = [];
+
+        function switchView(viewName) {
+            const fSection = document.getElementById('factory-overview-section');
+            const mSection = document.getElementById('machine-view-container');
+            const btnM = document.getElementById('btn-view-machine');
+            const btnF = document.getElementById('btn-view-factory');
+
+            if (viewName === 'factory') {
+                if (fSection) fSection.classList.remove('d-none');
+                if (mSection) mSection.classList.add('d-none');
+                if (btnF) { btnF.classList.add('active', 'btn-primary'); btnF.classList.remove('btn-outline-primary'); }
+                if (btnM) { btnM.classList.remove('active', 'btn-dark'); btnM.classList.add('btn-outline-dark'); }
+                loadFactoryOverview();
+            } else {
+                if (fSection) fSection.classList.add('d-none');
+                if (mSection) mSection.classList.remove('d-none');
+                if (btnM) { btnM.classList.add('active', 'btn-dark'); btnM.classList.remove('btn-outline-dark'); }
+                if (btnF) { btnF.classList.remove('active', 'btn-primary'); btnF.classList.add('btn-outline-primary'); }
+            }
+        }
+
+        async function loadAssetTree() {
+            try {
+                let res = await fetch('http://localhost:5000/api/hierarchy/tree');
+                if (res.ok) {
+                    assetTreeCache = await res.json();
+                    renderAssetTree(assetTreeCache);
+                }
+            } catch (err) {
+                console.error("Varlık ağacı yüklenemedi:", err);
+            }
+        }
+
+        function renderAssetTree(tree) {
+            const container = document.getElementById('asset-tree-container');
+            if (!container) return;
+
+            if (!tree || tree.length === 0) {
+                container.innerHTML = '<div class="text-muted small py-2 text-center">Ağaç verisi bulunamadı.</div>';
+                return;
+            }
+
+            let html = '';
+            tree.forEach(factory => {
+                let fStatusClass = factory.status === 'critical' ? 'critical' : (factory.status === 'warning' ? 'warning' : (factory.status === 'online' ? 'online' : 'offline'));
+                let fBadge = factory.activeAlarmCount > 0 ? `<span class="badge bg-danger ms-1" style="font-size: 0.65rem;">${factory.activeAlarmCount}</span>` : '';
+
+                html += `
+                    <div class="tree-factory-node mb-1">
+                        <div class="tree-factory-title" onclick="switchView('factory')">
+                            <span><i class="fa-solid fa-industry text-warning me-1"></i>${factory.name}</span>
+                            <span><span class="status-dot ${fStatusClass}"></span>${fBadge}</span>
+                        </div>
+                `;
+
+                if (factory.children && factory.children.length > 0) {
+                    factory.children.forEach(line => {
+                        let lStatusClass = line.status === 'critical' ? 'critical' : (line.status === 'warning' ? 'warning' : (line.status === 'online' ? 'online' : 'offline'));
+                        let lBadge = line.activeAlarmCount > 0 ? `<span class="badge bg-danger ms-1" style="font-size: 0.62rem;">${line.activeAlarmCount}</span>` : '';
+
+                        html += `
+                            <div class="tree-line-node">
+                                <div class="tree-line-title" onclick="switchView('factory')">
+                                    <span><i class="fa-solid fa-diagram-project text-info me-1"></i>${line.name}</span>
+                                    <span><span class="status-dot ${lStatusClass}"></span>${lBadge}</span>
+                                </div>
+                        `;
+
+                        if (line.children && line.children.length > 0) {
+                            line.children.forEach(machine => {
+                                let mStatusClass = machine.status === 'critical' ? 'critical' : (machine.status === 'warning' ? 'warning' : (machine.status === 'online' ? 'online' : 'offline'));
+                                let isActive = machine.entityId === selectedMachineId ? 'active-machine' : '';
+                                let mBadge = machine.activeAlarmCount > 0 ? `<span class="badge bg-danger ms-1" style="font-size: 0.60rem;">${machine.activeAlarmCount}</span>` : '';
+                                let healthSpan = machine.healthScore ? `<span class="badge bg-dark bg-opacity-50 text-light me-1" style="font-size: 0.60rem;">%${Math.round(machine.healthScore)}</span>` : '';
+
+                                html += `
+                                    <div class="tree-machine-item ${isActive}" onclick="selectMachine(${machine.entityId}, '${machine.name}', '${machine.code || ''}', '${line.name}', '${factory.name}')">
+                                        <span class="text-truncate" style="max-width: 140px;">
+                                            <i class="fa-solid fa-microchip text-secondary me-1"></i>${machine.name}
+                                        </span>
+                                        <span class="d-flex align-items-center">
+                                            ${healthSpan}
+                                            <span class="status-dot ${mStatusClass}"></span>
+                                            ${mBadge}
+                                        </span>
+                                    </div>
+                                `;
+                            });
+                        }
+
+                        html += `</div>`; // line close
+                    });
+                }
+
+                html += `</div>`; // factory close
+            });
+
+            container.innerHTML = html;
+        }
+
+        function selectMachine(machineId, machineName, machineCode, lineName, factoryName) {
+            selectedMachineId = machineId;
+
+            // Update Header labels
+            const badge = document.getElementById('selected-machine-badge');
+            if (badge) badge.innerHTML = `<i class="fa-solid fa-microchip me-1 text-warning"></i> #${machineCode || 'M' + machineId} - ${machineName}`;
+
+            const subtitle = document.getElementById('main-panel-subtitle');
+            if (subtitle && factoryName && lineName) {
+                subtitle.innerText = `${factoryName} > ${lineName}`;
+            }
+
+            // Switch to machine view
+            switchView('machine');
+
+            // Re-render tree to highlight active
+            renderAssetTree(assetTreeCache);
+
+            // Fetch live state for this machine
+            fetchDigitalTwinState();
+            fetchActiveAlarms();
+            setChartRange(20);
+        }
+
+        async function loadFactoryOverview() {
+            try {
+                let res = await fetch('http://localhost:5000/api/hierarchy/overview');
+                if (res.ok) {
+                    let ov = await res.json();
+                    
+                    document.getElementById('ov-factories').innerText = ov.totalFactories;
+                    document.getElementById('ov-lines').innerText = ov.totalLines;
+                    document.getElementById('ov-total-machines').innerText = ov.totalMachines;
+                    document.getElementById('ov-online-machines').innerText = ov.onlineMachines;
+                    document.getElementById('ov-online-ratio').innerText = ov.onlineRatioPercentage.toFixed(1);
+                    document.getElementById('ov-total-alarms').innerText = ov.totalActiveAlarms + ' Alarm';
+                    document.getElementById('ov-crit-alarms').innerText = ov.criticalAlarmsCount;
+                    document.getElementById('ov-warn-alarms').innerText = ov.warningAlarmsCount;
+                    document.getElementById('ov-overall-health').innerText = '%' + ov.overallFactoryHealthScore.toFixed(1);
+                    
+                    let hStatus = document.getElementById('ov-health-status');
+                    if (hStatus) {
+                        hStatus.innerText = ov.overallHealthStatus;
+                        hStatus.className = ov.overallFactoryHealthScore >= 80 ? 'text-success' : (ov.overallFactoryHealthScore >= 60 ? 'text-warning' : 'text-danger');
+                    }
+
+                    // Render Lines Table
+                    let tbody = document.getElementById('factory-lines-table-body');
+                    if (tbody && ov.lineSummaries) {
+                        if (ov.lineSummaries.length === 0) {
+                            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-2">Üretim hattı bulunamadı.</td></tr>';
+                        } else {
+                            let tableHtml = '';
+                            ov.lineSummaries.forEach(l => {
+                                let badgeClass = l.averageHealthScore >= 80 ? 'bg-success' : (l.averageHealthScore >= 60 ? 'bg-warning' : 'bg-danger');
+                                let alarmBadge = l.activeAlarmCount > 0 ? `<span class="badge bg-danger">${l.activeAlarmCount} Aktif</span>` : `<span class="badge bg-success">0</span>`;
+
+                                tableHtml += `
+                                    <tr>
+                                        <td><span class="badge bg-secondary">${l.lineCode}</span></td>
+                                        <td class="fw-bold">${l.lineName}</td>
+                                        <td class="text-muted small">${l.factoryName}</td>
+                                        <td>${l.onlineMachineCount}/${l.machineCount} Online</td>
+                                        <td>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <div class="progress flex-grow-1" style="height: 6px; width: 60px;">
+                                                    <div class="progress-bar ${badgeClass}" style="width: ${l.averageHealthScore}%;"></div>
+                                                </div>
+                                                <span class="fw-bold small">%${l.averageHealthScore.toFixed(1)}</span>
+                                            </div>
+                                        </td>
+                                        <td>${alarmBadge}</td>
+                                        <td><span class="badge ${badgeClass}">${l.status}</span></td>
+                                    </tr>
+                                `;
+                            });
+                            tbody.innerHTML = tableHtml;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Fabrika özeti alınamadı:", err);
+            }
+        }
+
         // Global Shared State Entegrasyonu
         if (window.SharedState) {
             window.SharedState.init();
@@ -1703,6 +2044,7 @@
         fetchRecentEvents();
         setChartRange(20);
         runWhatIfSimulation();
+        loadAssetTree();
     </script>
 </body>
 </html>

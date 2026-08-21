@@ -165,6 +165,7 @@ builder.Services.AddSingleton<IEventLogService, EventLogService>();
 builder.Services.AddSingleton<IAnomalyDetectionEngine, AnomalyDetectionEngine>();
 builder.Services.AddSingleton<IAlarmService, AlarmService>();
 builder.Services.AddSingleton<IMaintenanceService, MaintenanceService>();
+builder.Services.AddSingleton<IHierarchyService, HierarchyService>();
 builder.Services.AddSingleton<IDigitalTwinService, DigitalTwinService>();
 builder.Services.AddSingleton<ITagConfigService, TagConfigService>();
 
@@ -185,8 +186,30 @@ using (var scope = app.Services.CreateScope())
         {
             // Var olan tablolar varsa eksik sütunları ve indeksleri güvenle ekle
             db.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS factories (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(100) NOT NULL,
+                    location VARCHAR(100),
+                    description VARCHAR(255),
+                    isactive BOOLEAN DEFAULT TRUE,
+                    createdat TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS productionlines (
+                    id SERIAL PRIMARY KEY,
+                    factoryid INT NOT NULL,
+                    name VARCHAR(100) NOT NULL,
+                    linecode VARCHAR(50) NOT NULL,
+                    description VARCHAR(255),
+                    isactive BOOLEAN DEFAULT TRUE,
+                    createdat TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS ""IX_productionlines_factoryid"" ON productionlines (factoryid);
+                CREATE INDEX IF NOT EXISTS ""IX_productionlines_linecode"" ON productionlines (linecode);
+
                 CREATE TABLE IF NOT EXISTS machines (
                     id SERIAL PRIMARY KEY,
+                    productionlineid INT,
                     machinecode VARCHAR(50) UNIQUE NOT NULL,
                     name VARCHAR(100) NOT NULL,
                     type VARCHAR(50) NOT NULL,
@@ -196,11 +219,29 @@ using (var scope = app.Services.CreateScope())
                     createdat TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     updatedat TIMESTAMPTZ
                 );
+                ALTER TABLE machines ADD COLUMN IF NOT EXISTS productionlineid INT;
                 CREATE UNIQUE INDEX IF NOT EXISTS ""IX_machines_machinecode"" ON machines (machinecode);
+                CREATE INDEX IF NOT EXISTS ""IX_machines_productionlineid"" ON machines (productionlineid);
 
-                INSERT INTO machines (id, machinecode, name, type, plcip, isactive, description, createdat)
-                VALUES (1, 'PLC-S7-1200-UNIT-01', 'Siemens S7-1200 Akıllı Üretim Ünitesi', 'InjectionMolding', '192.168.0.1', TRUE, 'Ana PLC Üretim Hattı İstasyonu', CURRENT_TIMESTAMP)
+                INSERT INTO factories (id, name, location, description, isactive, createdat)
+                VALUES 
+                    (1, 'Gebze Akıllı Üretim Kampüsü', 'Kocaeli / Gebze OSB', 'Ana Otomasyon ve CNC İşleme Merkezi', TRUE, CURRENT_TIMESTAMP),
+                    (2, 'İzmir Ege Entegre Tesisi', 'İzmir / Çiğli AOSB', 'Robotik Montaj ve Lojistik Kampüsü', TRUE, CURRENT_TIMESTAMP)
                 ON CONFLICT (id) DO NOTHING;
+
+                INSERT INTO productionlines (id, factoryid, name, linecode, description, isactive, createdat)
+                VALUES
+                    (1, 1, 'Montaj & İşleme Hattı A', 'LINE-A', 'Enjeksiyon kalıplama ve CNC frezeleme', TRUE, CURRENT_TIMESTAMP),
+                    (2, 1, 'Robotik Hücre Hattı B', 'LINE-B', 'Kuka 6-eksen robotik malzeme besleme', TRUE, CURRENT_TIMESTAMP),
+                    (3, 2, 'Paketleme & Lojistik Hattı C', 'LINE-C', 'Akıllı konveyör ve paletleme istasyonu', TRUE, CURRENT_TIMESTAMP)
+                ON CONFLICT (id) DO NOTHING;
+
+                INSERT INTO machines (id, productionlineid, machinecode, name, type, plcip, isactive, description, createdat)
+                VALUES 
+                    (1, 1, 'PLC-S7-1200-UNIT-01', 'Siemens S7-1200 Akıllı Üretim Ünitesi', 'InjectionMolding', '192.168.0.1', TRUE, 'Ana PLC Üretim Hattı İstasyonu', CURRENT_TIMESTAMP),
+                    (2, 2, 'KUKA-KR6-ROBOT-02', 'Kuka Robotik Hücre', 'RoboticCell', '192.168.0.2', TRUE, 'Robotik Besleme İstasyonu', CURRENT_TIMESTAMP),
+                    (3, 3, 'PACK-CONVEYOR-03', 'Akıllı Konveyör & Paketleme', 'Packaging', '192.168.0.3', TRUE, 'Paletleme İstasyonu', CURRENT_TIMESTAMP)
+                ON CONFLICT (id) DO UPDATE SET productionlineid = EXCLUDED.productionlineid;
 
                 CREATE TABLE IF NOT EXISTS sensordata (
                     id BIGSERIAL PRIMARY KEY,
@@ -219,51 +260,58 @@ using (var scope = app.Services.CreateScope())
                 CREATE TABLE IF NOT EXISTS alarmlogs (
                     id BIGSERIAL PRIMARY KEY,
                     machineid INT NOT NULL DEFAULT 1,
-                    alarmtype VARCHAR(100) NOT NULL,
-                    severity INT NOT NULL,
-                    status INT NOT NULL,
+                    timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    alarmtype VARCHAR(50) NOT NULL,
+                    severity INT NOT NULL DEFAULT 1,
+                    status INT NOT NULL DEFAULT 1,
                     message VARCHAR(255) NOT NULL,
                     triggeredvalue DOUBLE PRECISION,
                     thresholdvalue DOUBLE PRECISION,
-                    createdat TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    resolvedat TIMESTAMPTZ,
-                    acknowledgedat TIMESTAMPTZ
+                    acknowledgedby VARCHAR(100),
+                    acknowledgedat TIMESTAMPTZ,
+                    resolvedat TIMESTAMPTZ
                 );
                 ALTER TABLE alarmlogs ADD COLUMN IF NOT EXISTS machineid INT NOT NULL DEFAULT 1;
-                CREATE INDEX IF NOT EXISTS ""IX_alarmlogs_createdat"" ON alarmlogs (createdat DESC);
+                ALTER TABLE alarmlogs ADD COLUMN IF NOT EXISTS triggeredvalue DOUBLE PRECISION;
+                ALTER TABLE alarmlogs ADD COLUMN IF NOT EXISTS thresholdvalue DOUBLE PRECISION;
+                ALTER TABLE alarmlogs ADD COLUMN IF NOT EXISTS acknowledgedby VARCHAR(100);
+                ALTER TABLE alarmlogs ADD COLUMN IF NOT EXISTS acknowledgedat TIMESTAMPTZ;
+                ALTER TABLE alarmlogs ADD COLUMN IF NOT EXISTS resolvedat TIMESTAMPTZ;
+                CREATE INDEX IF NOT EXISTS ""IX_alarmlogs_timestamp"" ON alarmlogs (timestamp DESC);
                 CREATE INDEX IF NOT EXISTS ""IX_alarmlogs_status"" ON alarmlogs (status);
                 CREATE INDEX IF NOT EXISTS ""IX_alarmlogs_machineid"" ON alarmlogs (machineid);
 
-                CREATE TABLE IF NOT EXISTS systemeventlogs (
+                CREATE TABLE IF NOT EXISTS systemevents (
                     id BIGSERIAL PRIMARY KEY,
                     machineid INT,
-                    eventtype VARCHAR(100) NOT NULL,
-                    severity INT NOT NULL,
+                    timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    eventtype VARCHAR(50) NOT NULL,
                     description VARCHAR(500) NOT NULL,
-                    source VARCHAR(100) DEFAULT 'System',
-                    timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    severity INT NOT NULL DEFAULT 0,
+                    source VARCHAR(100) NOT NULL DEFAULT 'System'
                 );
-                ALTER TABLE systemeventlogs ADD COLUMN IF NOT EXISTS machineid INT;
-                CREATE INDEX IF NOT EXISTS ""IX_systemeventlogs_timestamp"" ON systemeventlogs (timestamp DESC);
-                CREATE INDEX IF NOT EXISTS ""IX_systemeventlogs_machineid"" ON systemeventlogs (machineid);
+                CREATE INDEX IF NOT EXISTS ""IX_systemevents_timestamp"" ON systemevents (timestamp DESC);
+                CREATE INDEX IF NOT EXISTS ""IX_systemevents_eventtype"" ON systemevents (eventtype);
+                CREATE INDEX IF NOT EXISTS ""IX_systemevents_machineid"" ON systemevents (machineid);
 
                 CREATE TABLE IF NOT EXISTS plctagconfigs (
-                    id BIGSERIAL PRIMARY KEY,
+                    id SERIAL PRIMARY KEY,
                     machineid INT NOT NULL DEFAULT 1,
                     tagname VARCHAR(100) NOT NULL,
-                    dbnumber INT NOT NULL DEFAULT 1,
-                    byteoffset INT NOT NULL DEFAULT 0,
-                    bitoffset INT NOT NULL DEFAULT 0,
-                    datatype VARCHAR(20) NOT NULL DEFAULT 'REAL',
-                    unit VARCHAR(50),
+                    displayname VARCHAR(100) NOT NULL,
+                    dbnumber INT NOT NULL,
+                    startbyte INT NOT NULL,
+                    bitnumber INT,
+                    datatype INT NOT NULL,
+                    unittype VARCHAR(20) NOT NULL,
+                    isactive BOOLEAN NOT NULL DEFAULT TRUE,
+                    iswritable BOOLEAN NOT NULL DEFAULT FALSE,
                     description VARCHAR(255),
-                    iswritable BOOLEAN DEFAULT TRUE,
-                    ismonitored BOOLEAN DEFAULT TRUE,
                     createdat TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     updatedat TIMESTAMPTZ
                 );
-                ALTER TABLE plctagconfigs ADD COLUMN IF NOT EXISTS machineid INT NOT NULL DEFAULT 1;
                 CREATE INDEX IF NOT EXISTS ""IX_plctagconfigs_machineid"" ON plctagconfigs (machineid);
+                CREATE INDEX IF NOT EXISTS ""IX_plctagconfigs_tagname"" ON plctagconfigs (tagname);
 
                 CREATE TABLE IF NOT EXISTS alarmrules (
                     id SERIAL PRIMARY KEY,
@@ -302,23 +350,69 @@ using (var scope = app.Services.CreateScope())
                 CREATE INDEX IF NOT EXISTS ""IX_maintenancetasks_priority"" ON maintenancetasks (priority);
             ");
 
-            Console.WriteLine("[PostgreSQL] Veritabanı tabloları ve varsayılan kayıtlar hazırlandı.");
+            Console.WriteLine("[PostgreSQL] Veritabanı tabloları, hiyerarşi ve varsayılan kayıtlar hazırlandı.");
         }
         else
         {
+            if (!db.Factories.Any())
+            {
+                db.Factories.AddRange(
+                    new Factory { Id = 1, Name = "Gebze Akıllı Üretim Kampüsü", Location = "Kocaeli / Gebze OSB", Description = "Ana Otomasyon ve CNC İşleme Merkezi", IsActive = true },
+                    new Factory { Id = 2, Name = "İzmir Ege Entegre Tesisi", Location = "İzmir / Çiğli AOSB", Description = "Robotik Montaj ve Lojistik Kampüsü", IsActive = true }
+                );
+                db.SaveChanges();
+            }
+
+            if (!db.ProductionLines.Any())
+            {
+                db.ProductionLines.AddRange(
+                    new ProductionLine { Id = 1, FactoryId = 1, Name = "Montaj & İşleme Hattı A", LineCode = "LINE-A", Description = "Enjeksiyon kalıplama ve CNC frezeleme", IsActive = true },
+                    new ProductionLine { Id = 2, FactoryId = 1, Name = "Robotik Hücre Hattı B", LineCode = "LINE-B", Description = "Kuka 6-eksen robotik malzeme besleme", IsActive = true },
+                    new ProductionLine { Id = 3, FactoryId = 2, Name = "Paketleme & Lojistik Hattı C", LineCode = "LINE-C", Description = "Akıllı konveyör ve paletleme istasyonu", IsActive = true }
+                );
+                db.SaveChanges();
+            }
+
             if (!db.Machines.Any())
             {
-                db.Machines.Add(new Machine
-                {
-                    Id = 1,
-                    MachineCode = "PLC-S7-1200-UNIT-01",
-                    Name = "Siemens S7-1200 Akıllı Üretim Ünitesi",
-                    Type = "InjectionMolding",
-                    PlcIp = "192.168.0.1",
-                    IsActive = true,
-                    Description = "Ana PLC Üretim Hattı İstasyonu",
-                    CreatedAt = DateTime.UtcNow
-                });
+                db.Machines.AddRange(
+                    new Machine
+                    {
+                        Id = 1,
+                        ProductionLineId = 1,
+                        MachineCode = "PLC-S7-1200-UNIT-01",
+                        Name = "Siemens S7-1200 Akıllı Üretim Ünitesi",
+                        Type = "InjectionMolding",
+                        PlcIp = "192.168.0.1",
+                        IsActive = true,
+                        Description = "Ana PLC Üretim Hattı İstasyonu",
+                        CreatedAt = DateTime.UtcNow
+                    },
+                    new Machine
+                    {
+                        Id = 2,
+                        ProductionLineId = 2,
+                        MachineCode = "KUKA-KR6-ROBOT-02",
+                        Name = "Kuka Robotik Hücre",
+                        Type = "RoboticCell",
+                        PlcIp = "192.168.0.2",
+                        IsActive = true,
+                        Description = "Robotik Besleme İstasyonu",
+                        CreatedAt = DateTime.UtcNow
+                    },
+                    new Machine
+                    {
+                        Id = 3,
+                        ProductionLineId = 3,
+                        MachineCode = "PACK-CONVEYOR-03",
+                        Name = "Akıllı Konveyör & Paketleme",
+                        Type = "Packaging",
+                        PlcIp = "192.168.0.3",
+                        IsActive = true,
+                        Description = "Paletleme İstasyonu",
+                        CreatedAt = DateTime.UtcNow
+                    }
+                );
                 db.SaveChanges();
             }
 
@@ -349,7 +443,7 @@ using (var scope = app.Services.CreateScope())
                 db.SaveChanges();
             }
 
-            Console.WriteLine("[In-Memory DB] Varsayılan makineler, tagler, bakım görevleri ve alarm kuralları belleğe yüklendi.");
+            Console.WriteLine("[In-Memory DB] Varsayılan fabrikalar, hatlar, makineler, tagler, bakım görevleri ve alarm kuralları belleğe yüklendi.");
         }
 
         var tagConfigService = scope.ServiceProvider.GetRequiredService<ITagConfigService>();

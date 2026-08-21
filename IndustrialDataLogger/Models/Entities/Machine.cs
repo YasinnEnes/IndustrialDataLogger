@@ -37,6 +37,9 @@ namespace IndustrialDataLogger.Models.Entities
         [Column("isactive")]
         public bool IsActive { get; set; } = true;
 
+        [Column("productionlineid")]
+        public int? ProductionLineId { get; set; }
+
         [Column("description")]
         [MaxLength(255)]
         public string Description { get; set; } = string.Empty;
@@ -48,6 +51,10 @@ namespace IndustrialDataLogger.Models.Entities
         public DateTime? UpdatedAt { get; set; }
 
         // Navigation Properties
+        [ForeignKey(nameof(ProductionLineId))]
+        [JsonIgnore]
+        public ProductionLine? ProductionLine { get; set; }
+
         [JsonIgnore]
         public ICollection<SensorDataLog> SensorDataLogs { get; set; } = new List<SensorDataLog>();
 
@@ -59,5 +66,8 @@ namespace IndustrialDataLogger.Models.Entities
 
         [JsonIgnore]
         public ICollection<AlarmRule> AlarmRules { get; set; } = new List<AlarmRule>();
+
+        [JsonIgnore]
+        public ICollection<MaintenanceTask> MaintenanceTasks { get; set; } = new List<MaintenanceTask>();
     }
 }

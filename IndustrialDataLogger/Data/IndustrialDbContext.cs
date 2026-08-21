@@ -9,6 +9,8 @@ namespace IndustrialDataLogger.Data
         {
         }
 
+        public DbSet<Factory> Factories { get; set; } = null!;
+        public DbSet<ProductionLine> ProductionLines { get; set; } = null!;
         public DbSet<Machine> Machines { get; set; } = null!;
         public DbSet<SensorDataLog> SensorDataLogs { get; set; } = null!;
         public DbSet<AlarmLog> Alarms { get; set; } = null!;
@@ -21,12 +23,53 @@ namespace IndustrialDataLogger.Data
         {
             base.OnModelCreating(modelBuilder);
 
+            // 0.1 Factory Tablosu
+            modelBuilder.Entity<Factory>(entity =>
+            {
+                entity.ToTable("factories");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.Name).HasColumnName("name").IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Location).HasColumnName("location").HasMaxLength(100);
+                entity.Property(e => e.Description).HasColumnName("description").HasMaxLength(255);
+                entity.Property(e => e.IsActive).HasColumnName("isactive").HasDefaultValue(true);
+                entity.Property(e => e.CreatedAt).HasColumnName("createdat").IsRequired();
+
+                entity.HasMany(e => e.ProductionLines)
+                      .WithOne(p => p.Factory)
+                      .HasForeignKey(p => p.FactoryId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // 0.2 ProductionLine Tablosu
+            modelBuilder.Entity<ProductionLine>(entity =>
+            {
+                entity.ToTable("productionlines");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.FactoryId).HasColumnName("factoryid");
+                entity.Property(e => e.Name).HasColumnName("name").IsRequired().HasMaxLength(100);
+                entity.Property(e => e.LineCode).HasColumnName("linecode").IsRequired().HasMaxLength(50);
+                entity.Property(e => e.Description).HasColumnName("description").HasMaxLength(255);
+                entity.Property(e => e.IsActive).HasColumnName("isactive").HasDefaultValue(true);
+                entity.Property(e => e.CreatedAt).HasColumnName("createdat").IsRequired();
+
+                entity.HasIndex(e => e.LineCode).HasDatabaseName("IX_productionlines_linecode");
+                entity.HasIndex(e => e.FactoryId).HasDatabaseName("IX_productionlines_factoryid");
+
+                entity.HasMany(e => e.Machines)
+                      .WithOne(m => m.ProductionLine)
+                      .HasForeignKey(m => m.ProductionLineId)
+                      .OnDelete(DeleteBehavior.SetNull);
+            });
+
             // 1. Machine Tablosu & İndeksleri
             modelBuilder.Entity<Machine>(entity =>
             {
                 entity.ToTable("machines");
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.ProductionLineId).HasColumnName("productionlineid");
                 entity.Property(e => e.MachineCode).HasColumnName("machinecode").IsRequired().HasMaxLength(50);
                 entity.Property(e => e.Name).HasColumnName("name").IsRequired().HasMaxLength(100);
                 entity.Property(e => e.Type).HasColumnName("type").IsRequired().HasMaxLength(50);
@@ -39,6 +82,9 @@ namespace IndustrialDataLogger.Data
                 entity.HasIndex(e => e.MachineCode)
                       .IsUnique()
                       .HasDatabaseName("IX_machines_machinecode");
+
+                entity.HasIndex(e => e.ProductionLineId)
+                      .HasDatabaseName("IX_machines_productionlineid");
 
                 // Relationships
                 entity.HasMany(e => e.SensorDataLogs)
