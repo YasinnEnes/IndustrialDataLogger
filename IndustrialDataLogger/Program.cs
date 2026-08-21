@@ -14,6 +14,7 @@ using System.IO;
 using System.Text;
 using IndustrialDataLogger;
 using IndustrialDataLogger.Data;
+using IndustrialDataLogger.Enums;
 using IndustrialDataLogger.HealthChecks;
 using IndustrialDataLogger.Hubs;
 using IndustrialDataLogger.Models.Entities;
@@ -163,6 +164,7 @@ builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
 builder.Services.AddSingleton<IEventLogService, EventLogService>();
 builder.Services.AddSingleton<IAnomalyDetectionEngine, AnomalyDetectionEngine>();
 builder.Services.AddSingleton<IAlarmService, AlarmService>();
+builder.Services.AddSingleton<IMaintenanceService, MaintenanceService>();
 builder.Services.AddSingleton<IDigitalTwinService, DigitalTwinService>();
 builder.Services.AddSingleton<ITagConfigService, TagConfigService>();
 
@@ -281,6 +283,23 @@ using (var scope = app.Services.CreateScope())
                 CREATE INDEX IF NOT EXISTS ""IX_alarmrules_machineid"" ON alarmrules (machineid);
                 CREATE INDEX IF NOT EXISTS ""IX_alarmrules_metric"" ON alarmrules (metric);
                 CREATE INDEX IF NOT EXISTS ""IX_alarmrules_enabled"" ON alarmrules (enabled);
+
+                CREATE TABLE IF NOT EXISTS maintenancetasks (
+                    id SERIAL PRIMARY KEY,
+                    machineid INT NOT NULL DEFAULT 1,
+                    component VARCHAR(100) NOT NULL,
+                    reason VARCHAR(500) NOT NULL,
+                    priority INT NOT NULL DEFAULT 2,
+                    status INT NOT NULL DEFAULT 1,
+                    assignedto VARCHAR(100),
+                    createdat TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    resolvedat TIMESTAMPTZ,
+                    resolutionnotes VARCHAR(1000),
+                    alarmlogid BIGINT
+                );
+                CREATE INDEX IF NOT EXISTS ""IX_maintenancetasks_machineid"" ON maintenancetasks (machineid);
+                CREATE INDEX IF NOT EXISTS ""IX_maintenancetasks_status"" ON maintenancetasks (status);
+                CREATE INDEX IF NOT EXISTS ""IX_maintenancetasks_priority"" ON maintenancetasks (priority);
             ");
 
             Console.WriteLine("[PostgreSQL] Veritabanı tabloları ve varsayılan kayıtlar hazırlandı.");
@@ -302,7 +321,35 @@ using (var scope = app.Services.CreateScope())
                 });
                 db.SaveChanges();
             }
-            Console.WriteLine("[In-Memory DB] Varsayılan makineler, tagler ve alarm kuralları belleğe yüklendi.");
+
+            if (!db.MaintenanceTasks.Any())
+            {
+                db.MaintenanceTasks.AddRange(
+                    new MaintenanceTask
+                    {
+                        MachineId = 1,
+                        Component = "Soğutma Sistemi & Termal Eşanjör",
+                        Reason = "Periyodik soğutma sıvısı seviyesi ve fan filtre kontrolü",
+                        Priority = MaintenancePriority.Medium,
+                        Status = MaintenanceStatus.InProgress,
+                        AssignedTo = "Vardiya Bakım Ekibi A",
+                        CreatedAt = DateTime.UtcNow.AddHours(-2)
+                    },
+                    new MaintenanceTask
+                    {
+                        MachineId = 1,
+                        Component = "Hidrolik Pompa & Basınç Valfleri",
+                        Reason = "Pik basınç dalgalanması tespiti sonrası sızdırmazlık teftişi",
+                        Priority = MaintenancePriority.High,
+                        Status = MaintenanceStatus.Open,
+                        AssignedTo = "Mehmet Usta",
+                        CreatedAt = DateTime.UtcNow.AddMinutes(-35)
+                    }
+                );
+                db.SaveChanges();
+            }
+
+            Console.WriteLine("[In-Memory DB] Varsayılan makineler, tagler, bakım görevleri ve alarm kuralları belleğe yüklendi.");
         }
 
         var tagConfigService = scope.ServiceProvider.GetRequiredService<ITagConfigService>();

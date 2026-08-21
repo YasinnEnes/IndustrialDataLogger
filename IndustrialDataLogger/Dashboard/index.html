@@ -727,6 +727,7 @@
             let isAuthorized = userRole === 'Programcı' || sessionStorage.getItem('roleKey') === 'Admin' || sessionStorage.getItem('roleKey') === 'Programmer';
 
             let menuHTML = `<a href="index.html" class="active"><i class="fa-solid fa-chart-line me-2"></i> Grafikler & Dijital İkiz</a>`;
+            menuHTML += `<a href="maintenance.html"><i class="fa-solid fa-wrench me-2"></i> Bakım Yönetimi</a>`;
 
             if (isAuthorized) {
                 menuHTML += `<a href="control.html"><i class="fa-solid fa-sliders me-2"></i> PLC Komut</a>`;

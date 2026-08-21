@@ -263,6 +263,24 @@ namespace IndustrialDataLogger.Services
             // Sistem Olay Günlüğüne Kaydet
             await _eventLogService.LogEventAsync("ALARM_TRIGGERED", $"[Makine #{machineId}] [{severity}] {alarmType}: {message}", severity, "AlarmEngine", cancellationToken);
 
+            // GÜN 4: Kritik Alarmlarda Otomatik Bakım İş Emri (Maintenance Work Order) Tetikleme
+            if (severity == AlarmSeverity.Critical)
+            {
+                try
+                {
+                    using var maintScope = _serviceProvider.CreateScope();
+                    var maintService = maintScope.ServiceProvider.GetService<IMaintenanceService>();
+                    if (maintService != null)
+                    {
+                        await maintService.AutoCreateTaskFromAlarmAsync(alarm, cancellationToken);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("Otomatik bakım iş emri oluşturulurken hata: {Message}", ex.Message);
+                }
+            }
+
             // SignalR ile anlık yayın
             await BroadcastAlarmStateAsync(cancellationToken);
         }

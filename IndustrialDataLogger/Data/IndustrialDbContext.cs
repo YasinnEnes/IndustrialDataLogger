@@ -15,6 +15,7 @@ namespace IndustrialDataLogger.Data
         public DbSet<AlarmRule> AlarmRules { get; set; } = null!;
         public DbSet<SystemEventLog> SystemEvents { get; set; } = null!;
         public DbSet<PlcTagConfig> PlcTags { get; set; } = null!;
+        public DbSet<MaintenanceTask> MaintenanceTasks { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -180,10 +181,36 @@ namespace IndustrialDataLogger.Data
                 entity.Property(e => e.Threshold).HasColumnName("threshold").IsRequired();
                 entity.Property(e => e.Severity).HasColumnName("severity").IsRequired();
                 entity.Property(e => e.AlarmType).HasColumnName("alarmtype").IsRequired().HasMaxLength(100);
-                entity.Property(e => e.MessageTemplate).HasColumnName("messagetemplate").IsRequired().HasMaxLength(255);
                 entity.Property(e => e.Enabled).HasColumnName("enabled").HasDefaultValue(true);
                 entity.Property(e => e.CreatedAt).HasColumnName("createdat").IsRequired();
                 entity.Property(e => e.UpdatedAt).HasColumnName("updatedat");
+            });
+
+            // 7. MaintenanceTask Tablosu & İndeksleri
+            modelBuilder.Entity<MaintenanceTask>(entity =>
+            {
+                entity.ToTable("maintenancetasks");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.MachineId).HasColumnName("machineid");
+                entity.Property(e => e.Component).HasColumnName("component").IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Reason).HasColumnName("reason").IsRequired().HasMaxLength(500);
+                entity.Property(e => e.Priority).HasColumnName("priority").IsRequired();
+                entity.Property(e => e.Status).HasColumnName("status").IsRequired();
+                entity.Property(e => e.AssignedTo).HasColumnName("assignedto").HasMaxLength(100);
+                entity.Property(e => e.CreatedAt).HasColumnName("createdat").IsRequired();
+                entity.Property(e => e.ResolvedAt).HasColumnName("resolvedat");
+                entity.Property(e => e.ResolutionNotes).HasColumnName("resolutionnotes").HasMaxLength(1000);
+                entity.Property(e => e.AlarmLogId).HasColumnName("alarmlogid");
+
+                entity.HasIndex(e => e.MachineId).HasDatabaseName("IX_maintenancetasks_machineid");
+                entity.HasIndex(e => e.Status).HasDatabaseName("IX_maintenancetasks_status");
+                entity.HasIndex(e => e.Priority).HasDatabaseName("IX_maintenancetasks_priority");
+
+                entity.HasOne(e => e.Machine)
+                      .WithMany()
+                      .HasForeignKey(e => e.MachineId)
+                      .OnDelete(DeleteBehavior.Cascade);
             });
         }
     }

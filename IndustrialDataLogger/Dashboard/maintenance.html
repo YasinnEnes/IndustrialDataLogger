@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bakım Yönetimi & İş Emirleri - IoT Data Logger</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- SignalR Client -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9;
+            color: #1e293b;
+        }
+
+        .sidebar {
+            min-height: 100vh;
+            background: #1e293b;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .sidebar a {
+            color: #94a3b8;
+            text-decoration: none;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            border-radius: 8px;
+            margin: 4px 10px;
+            font-weight: 500;
+            transition: all 0.25s ease;
+        }
+
+        .sidebar a:hover, .sidebar a.active {
+            background: #3b82f6;
+            color: #fff;
+        }
+
+        .card-custom {
+            border: none;
+            border-radius: 14px;
+            background-color: #ffffff;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .priority-badge-critical {
+            background-color: #fee2e2;
+            color: #dc2626;
+            border: 1px solid #fca5a5;
+        }
+
+        .priority-badge-high {
+            background-color: #ffedd5;
+            color: #ea580c;
+            border: 1px solid #fdba74;
+        }
+
+        .priority-badge-medium {
+            background-color: #fef9c3;
+            color: #ca8a04;
+            border: 1px solid #fde047;
+        }
+
+        .priority-badge-low {
+            background-color: #f0fdf4;
+            color: #16a34a;
+            border: 1px solid #86efac;
+        }
+
+        .status-badge-open {
+            background-color: #ef4444;
+            color: #ffffff;
+        }
+
+        .status-badge-inprogress {
+            background-color: #3b82f6;
+            color: #ffffff;
+        }
+
+        .status-badge-resolved {
+            background-color: #10b981;
+            color: #ffffff;
+        }
+
+        .table-hover tbody tr:hover {
+            background-color: #f8fafc;
+        }
+
+        @media (max-width: 992px) {
+            .sidebar {
+                width: 100%;
+                position: relative;
+                min-height: auto;
+            }
+            .main-content {
+                margin-left: 0;
+                padding: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container-fluid p-0">
+        <!-- Sidebar Navigation -->
+        <div class="sidebar d-none d-lg-flex p-3" style="width: 250px; position: fixed; top: 0; bottom: 0;">
+            <div>
+                <h4 class="text-white text-center py-3 mb-4 border-bottom border-secondary border-opacity-25">
+                    <i class="fa-solid fa-industry text-warning me-2"></i>IoT Panel
+                </h4>
+                <nav id="sidebar-nav">
+                    <a href="index.html"><i class="fa-solid fa-chart-line me-2"></i> Grafikler & Dijital İkiz</a>
+                    <a href="maintenance.html" class="active"><i class="fa-solid fa-wrench me-2"></i> Bakım Yönetimi</a>
+                    <a href="control.html"><i class="fa-solid fa-sliders me-2"></i> PLC Komut</a>
+                    <a href="tags.html"><i class="fa-solid fa-tags me-2"></i> PLC Değişkenleri</a>
+                </nav>
+            </div>
+
+            <div class="p-3 bg-black bg-opacity-25 rounded-3 mb-3 border border-secondary border-opacity-25">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="text-muted small">Oturum:</span>
+                    <span id="logged-user-role" class="badge bg-primary">Programcı</span>
+                </div>
+                <button onclick="logout()" class="btn btn-outline-danger btn-sm w-100 mt-2">
+                    <i class="fa-solid fa-arrow-right-from-bracket me-1"></i> Çıkış Yap
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="main-content p-4" style="margin-left: 250px;">
+            <!-- Header Row -->
+            <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+                <div>
+                    <h3 class="fw-bold mb-0 text-dark">
+                        <i class="fa-solid fa-wrench text-primary me-2"></i>Bakım Yönetimi & İş Emri Entegrasyonu
+                    </h3>
+                    <small class="text-muted">Kritik alarmlar ve anomali tespitiyle otomatik tetiklenen iş emirlerini yönetin ve kapatın.</small>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <button class="btn btn-primary btn-sm fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#createTaskModal">
+                        <i class="fa-solid fa-plus me-1"></i>Yeni İş Emri Aç
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="loadTasksAndStats()" title="Yenile">
+                        <i class="fa-solid fa-rotate"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- KPI Summary Cards Row -->
+            <div class="row g-3 mb-4">
+                <div class="col-xl-3 col-sm-6">
+                    <div class="card card-custom p-3 border-start border-4 border-primary">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="text-muted small fw-semibold">TOPLAM İŞ EMRİ</span>
+                                <h3 class="fw-bold mb-0 mt-1" id="stat-total">0</h3>
+                            </div>
+                            <div class="p-3 bg-primary bg-opacity-10 text-primary rounded-circle">
+                                <i class="fa-solid fa-list-check fa-lg"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-xl-3 col-sm-6">
+                    <div class="card card-custom p-3 border-start border-4 border-danger">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="text-muted small fw-semibold">AÇIK / BEKLEYEN</span>
+                                <h3 class="fw-bold mb-0 mt-1 text-danger" id="stat-open">0</h3>
+                            </div>
+                            <div class="p-3 bg-danger bg-opacity-10 text-danger rounded-circle">
+                                <i class="fa-solid fa-triangle-exclamation fa-lg"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-xl-3 col-sm-6">
+                    <div class="card card-custom p-3 border-start border-4 border-warning">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="text-muted small fw-semibold">İNCELEMEDE / DEVAM EDEN</span>
+                                <h3 class="fw-bold mb-0 mt-1 text-warning" id="stat-inprogress">0</h3>
+                            </div>
+                            <div class="p-3 bg-warning bg-opacity-10 text-warning rounded-circle">
+                                <i class="fa-solid fa-screwdriver-wrench fa-lg"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-xl-3 col-sm-6">
+                    <div class="card card-custom p-3 border-start border-4 border-success">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="text-muted small fw-semibold">TAMAMLANAN</span>
+                                <h3 class="fw-bold mb-0 mt-1 text-success" id="stat-resolved">0</h3>
+                            </div>
+                            <div class="p-3 bg-success bg-opacity-10 text-success rounded-circle">
+                                <i class="fa-solid fa-circle-check fa-lg"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filter Controls & Work Orders Table Card -->
+            <div class="card card-custom p-3 mb-4">
+                <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button type="button" class="btn btn-primary filter-status-btn active" onclick="filterByStatus(null, this)">Tümü</button>
+                        <button type="button" class="btn btn-outline-secondary filter-status-btn" onclick="filterByStatus('Open', this)">🔴 Açık</button>
+                        <button type="button" class="btn btn-outline-secondary filter-status-btn" onclick="filterByStatus('InProgress', this)">🔵 İnceleniyor</button>
+                        <button type="button" class="btn btn-outline-secondary filter-status-btn" onclick="filterByStatus('Resolved', this)">🟢 Çözüldü</button>
+                    </div>
+
+                    <div class="d-flex align-items-center gap-2">
+                        <select class="form-select form-select-sm" id="filter-priority-select" onchange="loadTasksAndStats()" style="width: 140px;">
+                            <option value="">Tüm Öncelikler</option>
+                            <option value="Critical">Kritik</option>
+                            <option value="High">Yüksek</option>
+                            <option value="Medium">Orta</option>
+                            <option value="Low">Düşük</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Table -->
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0" style="font-size: 0.88rem;">
+                        <thead class="table-light text-muted">
+                            <tr>
+                                <th scope="col" style="width: 80px;">İş Emri #</th>
+                                <th scope="col" style="width: 140px;">Makine</th>
+                                <th scope="col" style="width: 180px;">Bileşen / Alt Sistem</th>
+                                <th scope="col">Arıza Nedeni / Talep</th>
+                                <th scope="col" style="width: 110px;">Öncelik</th>
+                                <th scope="col" style="width: 110px;">Durum</th>
+                                <th scope="col" style="width: 150px;">Atanan</th>
+                                <th scope="col" style="width: 140px;">Tarih</th>
+                                <th scope="col" style="width: 130px;" class="text-end">İşlemler</th>
+                            </tr>
+                        </thead>
+                        <tbody id="maintenance-table-body">
+                            <tr>
+                                <td colspan="9" class="text-center py-4 text-muted">
+                                    <i class="fa-solid fa-spinner fa-spin me-2"></i>İş emirleri yükleniyor...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Manuel İş Emri Aç -->
+    <div class="modal fade" id="createTaskModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold"><i class="fa-solid fa-plus text-primary me-2"></i>Yeni Bakım İş Emri Aç</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="create-task-form">
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Makine</label>
+                            <select class="form-select form-select-sm" id="modal-machine-id">
+                                <option value="1">#M1 - Siemens S7-1200 Akıllı Ünite</option>
+                                <option value="2">#M2 - Kuka Robotik Besleme Hücresi</option>
+                                <option value="3">#M3 - Paketleme & Konveyör Hattı</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Bileşen / Alt Sistem</label>
+                            <input type="text" class="form-control form-control-sm" id="modal-component" placeholder="Örn: Soğutma Sistemi, Hidrolik Pompa" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Öncelik Seviyesi</label>
+                            <select class="form-select form-select-sm" id="modal-priority">
+                                <option value="Low">Düşük (Planlı Periyodik)</option>
+                                <option value="Medium" selected>Orta (Genel Bakım)</option>
+                                <option value="High">Yüksek (Performans Düşüşü)</option>
+                                <option value="Critical">Kritik (Acil Duruş Riski)</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Atanan Sorumlu Operatör</label>
+                            <input type="text" class="form-control form-control-sm" id="modal-assigned-to" placeholder="Örn: Ahmet Usta, Bakım Ekibi A">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Arıza / Bakım Nedeni</label>
+                            <textarea class="form-control form-control-sm" id="modal-reason" rows="3" placeholder="Arıza detayını veya yapılacak müdahaleyi açıklayın..." required></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">İptal</button>
+                    <button type="button" class="btn btn-primary btn-sm fw-bold" onclick="submitCreateTask()">
+                        <i class="fa-solid fa-check me-1"></i>İş Emrini Kaydet
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: İşi Kapat / Çözüldü -->
+    <div class="modal fade" id="resolveTaskModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold"><i class="fa-solid fa-circle-check text-success me-2"></i>İş Emrini Kapat / Çözüldü</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="resolve-task-id">
+                    <div class="alert alert-info py-2 small" id="resolve-task-summary">
+                        İş emri bilgisi...
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Müdahale & Çözüm Notları</label>
+                        <textarea class="form-control form-control-sm" id="resolve-notes" rows="3" placeholder="Yapılan onarım, parça değişimi veya müdahale özetini giriniz..." required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Vazgeç</button>
+                    <button type="button" class="btn btn-success btn-sm fw-bold" onclick="submitResolveTask()">
+                        <i class="fa-solid fa-check me-1"></i>Kapat ve Tamamla
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        let currentFilterStatus = null;
+        let tasksCache = [];
+
+        function logout() {
+            sessionStorage.clear();
+            window.location.href = 'login.html';
+        }
+
+        function filterByStatus(status, btnEl) {
+            currentFilterStatus = status;
+            document.querySelectorAll('.filter-status-btn').forEach(b => {
+                b.classList.remove('btn-primary', 'active');
+                b.classList.add('btn-outline-secondary');
+            });
+            if (btnEl) {
+                btnEl.classList.remove('btn-outline-secondary');
+                btnEl.classList.add('btn-primary', 'active');
+            }
+            loadTasksAndStats();
+        }
+
+        async function loadTasksAndStats() {
+            let priority = document.getElementById('filter-priority-select')?.value || '';
+            let url = 'http://localhost:5000/api/maintenance?';
+            if (currentFilterStatus) url += `status=${currentFilterStatus}&`;
+            if (priority) url += `priority=${priority}&`;
+
+            try {
+                // Fetch Tasks
+                let res = await fetch(url);
+                if (res.ok) {
+                    tasksCache = await res.json();
+                    renderTasksTable(tasksCache);
+                }
+
+                // Fetch Stats
+                let statsRes = await fetch('http://localhost:5000/api/maintenance/stats');
+                if (statsRes.ok) {
+                    let stats = await statsRes.json();
+                    document.getElementById('stat-total').innerText = stats.totalTasks;
+                    document.getElementById('stat-open').innerText = stats.openCount;
+                    document.getElementById('stat-inprogress').innerText = stats.inProgressCount;
+                    document.getElementById('stat-resolved').innerText = stats.resolvedCount;
+                }
+            } catch (err) {
+                console.error("Bakım görevleri yüklenemedi:", err);
+            }
+        }
+
+        function renderTasksTable(tasks) {
+            let tbody = document.getElementById('maintenance-table-body');
+            if (!tbody) return;
+
+            if (!tasks || tasks.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="9" class="text-center py-4 text-muted">
+                            <i class="fa-solid fa-circle-info me-2"></i>Seçili kriterlere uygun bakım iş emri bulunamadı.
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            let html = '';
+            tasks.forEach(t => {
+                let pClass = `priority-badge-${t.priorityName.toLowerCase()}`;
+                let sClass = `status-badge-${t.statusName.toLowerCase()}`;
+                let timeStr = new Date(t.createdAt).toLocaleString();
+                let statusLabel = t.statusName === 'Open' ? '🔴 Açık' : (t.statusName === 'InProgress' ? '🔵 İnceleniyor' : '🟢 Çözüldü');
+
+                let actionButtons = '';
+                if (t.statusName === 'Open') {
+                    actionButtons = `
+                        <button class="btn btn-outline-primary btn-sm py-0 px-2" style="font-size: 0.75rem;" onclick="updateStatus(${t.id}, 'InProgress', '${t.assignedTo || ''}')" title="İncelemeye Al">
+                            <i class="fa-solid fa-play me-1"></i>İncele
+                        </button>
+                        <button class="btn btn-outline-success btn-sm py-0 px-2" style="font-size: 0.75rem;" onclick="openResolveModal(${t.id}, '${t.component}', '${t.reason.replace(/'/g, "\\'")}')" title="Kapat">
+                            <i class="fa-solid fa-check"></i>
+                        </button>
+                    `;
+                } else if (t.statusName === 'InProgress') {
+                    actionButtons = `
+                        <button class="btn btn-success btn-sm py-0 px-2" style="font-size: 0.75rem;" onclick="openResolveModal(${t.id}, '${t.component}', '${t.reason.replace(/'/g, "\\'")}')" title="Kapat / Çözüldü">
+                            <i class="fa-solid fa-circle-check me-1"></i>Kapat
+                        </button>
+                    `;
+                } else {
+                    actionButtons = `
+                        <span class="badge bg-light text-muted border" style="font-size: 0.70rem;">
+                            <i class="fa-solid fa-check-double text-success me-1"></i>Tamamlandı
+                        </span>
+                    `;
+                }
+
+                html += `
+                    <tr>
+                        <td class="fw-bold">#${t.id}</td>
+                        <td>
+                            <span class="badge bg-light text-dark border">
+                                <i class="fa-solid fa-microchip me-1 text-primary"></i>#M${t.machineId}
+                            </span>
+                        </td>
+                        <td><span class="fw-semibold text-dark">${t.component}</span></td>
+                        <td class="text-truncate" style="max-width: 280px;" title="${t.reason}">
+                            ${t.reason}
+                            ${t.resolutionNotes ? `<div class="text-success small fst-italic">↳ Çözüm: ${t.resolutionNotes}</div>` : ''}
+                        </td>
+                        <td>
+                            <span class="badge ${pClass} px-2 py-1">${t.priorityName.toUpperCase()}</span>
+                        </td>
+                        <td>
+                            <span class="badge ${sClass} px-2 py-1">${statusLabel}</span>
+                        </td>
+                        <td>
+                            <small class="text-muted"><i class="fa-solid fa-user-gear me-1"></i>${t.assignedTo || 'Atanmadı'}</small>
+                        </td>
+                        <td><small class="text-muted">${timeStr}</small></td>
+                        <td class="text-end">${actionButtons}</td>
+                    </tr>
+                `;
+            });
+
+            tbody.innerHTML = html;
+        }
+
+        async function updateStatus(id, newStatus, currentAssigned) {
+            try {
+                let res = await fetch(`http://localhost:5000/api/maintenance/${id}/status`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        status: newStatus,
+                        assignedTo: currentAssigned || 'Nöbetçi Bakım Operatörü'
+                    })
+                });
+                if (res.ok) {
+                    loadTasksAndStats();
+                }
+            } catch (err) {
+                console.error("Durum güncellenemedi:", err);
+            }
+        }
+
+        function openResolveModal(id, component, reason) {
+            document.getElementById('resolve-task-id').value = id;
+            document.getElementById('resolve-task-summary').innerHTML = `<b>İş Emri #${id} (${component}):</b> ${reason}`;
+            document.getElementById('resolve-notes').value = '';
+            let modal = new bootstrap.Modal(document.getElementById('resolveTaskModal'));
+            modal.show();
+        }
+
+        async function submitResolveTask() {
+            let id = document.getElementById('resolve-task-id').value;
+            let notes = document.getElementById('resolve-notes').value;
+
+            if (!notes.trim()) {
+                alert("Lütfen yapılan müdahale özetini giriniz.");
+                return;
+            }
+
+            try {
+                let res = await fetch(`http://localhost:5000/api/maintenance/${id}/status`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        status: 'Resolved',
+                        resolutionNotes: notes
+                    })
+                });
+
+                if (res.ok) {
+                    bootstrap.Modal.getInstance(document.getElementById('resolveTaskModal')).hide();
+                    loadTasksAndStats();
+                }
+            } catch (err) {
+                console.error("İş emri kapatılamadı:", err);
+            }
+        }
+
+        async function submitCreateTask() {
+            let machineId = parseInt(document.getElementById('modal-machine-id').value);
+            let component = document.getElementById('modal-component').value;
+            let priority = document.getElementById('modal-priority').value;
+            let assignedTo = document.getElementById('modal-assigned-to').value;
+            let reason = document.getElementById('modal-reason').value;
+
+            if (!component.trim() || !reason.trim()) {
+                alert("Lütfen bileşen ve arıza nedeni alanlarını doldurunuz.");
+                return;
+            }
+
+            try {
+                let res = await fetch('http://localhost:5000/api/maintenance', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        machineId: machineId,
+                        component: component,
+                        priority: priority,
+                        assignedTo: assignedTo,
+                        reason: reason
+                    })
+                });
+
+                if (res.ok) {
+                    bootstrap.Modal.getInstance(document.getElementById('createTaskModal')).hide();
+                    document.getElementById('create-task-form').reset();
+                    loadTasksAndStats();
+                }
+            } catch (err) {
+                console.error("Yeni iş emri oluşturulamadı:", err);
+            }
+        }
+
+        // SignalR Real-Time Bağlantısı
+        const hubConnection = new signalR.HubConnectionBuilder()
+            .withUrl("http://localhost:5000/sensorHub")
+            .withAutomaticReconnect()
+            .build();
+
+        hubConnection.on("ReceiveMaintenanceTaskCreated", function (task) {
+            console.log("Yeni Bakım İş Emri Geldi:", task);
+            loadTasksAndStats();
+        });
+
+        hubConnection.on("ReceiveMaintenanceTaskUpdated", function (task) {
+            console.log("Bakım İş Emri Güncellendi:", task);
+            loadTasksAndStats();
+        });
+
+        hubConnection.start().catch(err => console.warn("SignalR bağlantı hatası:", err));
+
+        // İlk Yükleme
+        loadTasksAndStats();
+    </script>
+</body>
+</html>
