@@ -254,7 +254,7 @@ namespace IndustrialDataLogger.Data
                 entity.HasIndex(e => e.Priority).HasDatabaseName("IX_maintenancetasks_priority");
 
                 entity.HasOne(e => e.Machine)
-                      .WithMany()
+                      .WithMany(m => m.MaintenanceTasks)
                       .HasForeignKey(e => e.MachineId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
